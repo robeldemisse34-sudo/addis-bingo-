@@ -10,17 +10,12 @@ http.createServer((req, res) => {
 
 const TelegramBot = require('node-telegram-bot-api');
 
-// Your Bot Token from BotFather
 const TOKEN = process.env.BOT_TOKEN || '8784582049:AAGWUEzt7q70yRm2BgldnNiBTRmfz6Anhys';
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// Live Mini App Web Link
 const BINGO_APP_URL = 'https://addis-bingo-green.vercel.app/';
-
-// Direct link to your logo image on GitHub
 const photoUrl = 'https://raw.githubusercontent.com/robeldemisse34-sudo/addis-bingo-/main/IMG_20260901_224307_224.jpg';
 
-// 1. /start Command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
 
@@ -44,21 +39,6 @@ bot.onText(/\/start/, (msg) => {
     }
   });
 });
-      ]
-    }
-  });
-});
-
-// 2. Handle Button Clicks
-bot.on('callback_query', (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-
-  if (data === 'action_register') {
-    bot.sendMessage(chatId, "To register, please send your phone number or register inside the Mini App!");
-  } else if (data === 'action_deposit') {
-    bot.sendMessage(chatId, "For deposits, please contact support or use telebirr inside the Mini App.");
-  } else if (data === 'action_balance') {
     bot.sendMessage(chatId, "Your current balance is: 100.00 ETB");
   }
 
