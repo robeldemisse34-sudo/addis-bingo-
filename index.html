@@ -9,12 +9,13 @@
 <body>
 
     <div class="game-container">
-        <!-- Top Stats Bar: Live Wallet Balance & Stake -->
+        <!-- Top Stats Bar: Wallet, Stake, & Deposit Button -->
         <div class="stats-bar">
             <div class="stat-box">
                 <span class="stat-title">Wallet</span>
                 <span class="stat-value" id="walletBalance">0.00</span>
             </div>
+            <button id="depositBtn" onclick="openDepositModal()">Deposit <b>+</b></button>
             <div class="stat-box">
                 <span class="stat-title">Stake</span>
                 <span class="stat-value">10</span>
@@ -32,6 +33,21 @@
                 <button id="refreshBtn" onclick="randomizeSelectedCard()">Refresh</button>
                 <button id="startBtn" onclick="startGame()">Start game</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Deposit Modal Popup -->
+    <div id="depositModal" class="modal">
+        <div class="modal-content">
+            <h3>Choose Deposit Method</h3>
+            <p>Transfer funds to our accounts below:</p>
+            <div class="payment-option">
+                <strong>Telebirr:</strong> <span>0996939031</span> (Addis Bingo)
+            </div>
+            <div class="payment-option">
+                <strong>CBE Birr:</strong> <span>1000123456789</span> (Addis Bingo)
+            </div>
+            <button id="closeModalBtn" onclick="closeDepositModal()">Close</button>
         </div>
     </div>
 
