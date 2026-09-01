@@ -4,8 +4,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const TOKEN = '8784582049:AAGWUEzt7q70yRm2BgldnNiBTRmfz6Anhys';
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// Live Mini App Web Link (Replace with your actual Vercel/Render URL when deployed)
-const BINGO_APP_URL = 'https://your-bingo-app.vercel.app';
+// Live Mini App Web Link
+const BINGO_APP_URL = 'https://addis-bingo-green.vercel.app/';
 
 // 1. /start Command
 bot.onText(/\/start/, (msg) => {
@@ -15,7 +15,7 @@ bot.onText(/\/start/, (msg) => {
       inline_keyboard: [
         [
           { text: "Play Bingo 🎮", web_app: { url: BINGO_APP_URL } },
-          { text: "Play Spin 🎮", web_app: { url: `${BINGO_APP_URL}/spin` } }
+          { text: "Play Spin 🎮", web_app: { url: `${BINGO_APP_URL}?game=spin` } }
         ],
         [
           { text: "Register 📝", callback_data: "action_register" },
@@ -24,16 +24,29 @@ bot.onText(/\/start/, (msg) => {
         [
           { text: "Check Balance 💰", callback_data: "action_balance" },
           { text: "Contact Support 📞", url: "https://t.me/your_support_username" }
-        ],
-        [
-          { text: "Instruction 📖", callback_data: "action_instructions" },
-          { text: "Invite ✉️", callback_data: "action_invite" }
         ]
       ]
     }
   });
 });
 
+// 2. Handle Button Clicks
+bot.on('callback_query', (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  if (data === 'action_register') {
+    bot.sendMessage(chatId, "To register, please send your phone number or register inside the Mini App!");
+  } else if (data === 'action_deposit') {
+    bot.sendMessage(chatId, "For deposits, please contact support or use telebirr inside the Mini App.");
+  } else if (data === 'action_balance') {
+    bot.sendMessage(chatId, "Your current balance is: 100.00 ETB");
+  }
+
+  bot.answerCallbackQuery(query.id);
+});
+
+console.log("Addis Bingo Bot is running...");
 // 2. /playbingo Command
 bot.onText(/\/playbingo/, (msg) => {
   bot.sendMessage(msg.chat.id, "Click below to open the Bingo Arena:", {
