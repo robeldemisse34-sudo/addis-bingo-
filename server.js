@@ -16,7 +16,7 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 const BINGO_APP_URL = 'https://addis-bingo-green.vercel.app/';
 const photoUrl = 'https://raw.githubusercontent.com/robeldemisse34-sudo/addis-bingo-/main/IMG_20260901_224307_224.jpg';
 
-// 1. /start Command with Image and Full Buttons
+// 1. /start Command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
 
@@ -45,16 +45,24 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-// 2. Callback Listener to respond when non-link buttons are clicked
+// 2. Callback Listener for Menu Buttons
 bot.on('callback_query', (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
-  // Acknowledge click to stop loading animation
   bot.answerCallbackQuery(query.id);
 
   if (data === 'action_register') {
-    bot.sendMessage(chatId, "📝 Please use the Mini App to complete your registration.");
+    // Prompts the user to share contact
+    bot.sendMessage(chatId, "Click the button below to share your contact number for registration:", {
+      reply_markup: {
+        keyboard: [
+          [{ text: "📱 Share Contact", request_contact: true }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: true
+      }
+    });
   } else if (data === 'action_deposit') {
     bot.sendMessage(chatId, "💵 Deposit options will be processed inside the Mini App.");
   } else if (data === 'action_balance') {
@@ -64,4 +72,15 @@ bot.on('callback_query', (query) => {
   } else if (data === 'action_invite') {
     bot.sendMessage(chatId, `✉️ Share this bot link with friends:\nhttps://t.me/Adissbingoobot`);
   }
+});
+
+// 3. Listener for when contact is received
+bot.on('contact', (msg) => {
+  const chatId = msg.chat.id;
+  const phoneNumber = msg.contact.phone_number;
+  const firstName = msg.contact.first_name || '';
+
+  bot.sendMessage(chatId, `✅ Thank you ${firstName}! Your phone number (${phoneNumber}) has been registered successfully.`, {
+    reply_markup: { remove_keyboard: true }
+  });
 });
