@@ -1,16 +1,11 @@
 let selectedCharAt = 1;
 const cardDataStore = {};
 
-// Fetch live balance from backend/Telegram user session
 async function fetchUserWallet() {
     try {
-        // Retrieve Telegram User ID from WebApp API
         const telegramId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || "default_user";
-        
-        // Call your backend server endpoint for user data
         const response = await fetch(`/api/user?telegramId=${telegramId}`);
         const data = await response.json();
-        
         if (data.balance !== undefined) {
             document.getElementById('walletBalance').innerText = data.balance.toFixed(2);
         }
@@ -23,7 +18,6 @@ function generateCardSelector() {
     const grid = document.getElementById('cardSelectorGrid');
     grid.innerHTML = '';
     
-    // Support 100 cards matching the grid view
     for (let i = 1; i <= 100; i++) {
         const cell = document.createElement('div');
         cell.classList.add('selector-cell');
@@ -103,12 +97,19 @@ function randomizeSelectedCard() {
 }
 
 function startGame() {
-    alert(`Game started with Card #${selectedCharAt}! Deducting stake from wallet...`);
-    // Here you would send a POST request to your server.js to deduct stake and update live balance
+    alert(`Game started with Card #${selectedCharAt}!`);
+}
+
+// Deposit Modal Functions
+function openDepositModal() {
+    document.getElementById('depositModal').style.display = 'flex';
+}
+
+function closeDepositModal() {
+    document.getElementById('depositModal').style.display = 'none';
 }
 
 window.onload = () => {
-    // Ensure Telegram WebApp is ready
     if (window.Telegram?.WebApp) {
         window.Telegram.WebApp.ready();
     }
