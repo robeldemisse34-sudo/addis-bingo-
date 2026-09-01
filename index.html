@@ -9,39 +9,16 @@
 <body>
 
     <div class="game-container">
-        <!-- Top Stats Bar -->
-        <div class="stats-bar">
-            <div class="stat-box">
-                <span class="stat-title">Wallet</span>
-                <span class="stat-value">0.38</span>
-            </div>
-            <div class="stat-box">
-                <span class="stat-title">Active Game</span>
-                <span class="stat-value">2</span>
-            </div>
-            <div class="stat-box">
-                <span class="stat-title">Stake</span>
-                <span class="stat-value">10</span>
-            </div>
-        </div>
+        <!-- Master Caller Board (1 to 75) -->
+        <div class="master-board" id="masterBoard"></div>
 
-        <!-- Master Caller Board (1 to 75 / 100) -->
-        <div class="master-board" id="masterBoard">
-            <!-- JavaScript will generate numbers 1-75 here -->
-        </div>
+        <!-- Main Player Card (5x5) -->
+        <div class="bingo-card" id="bingoCard"></div>
 
-        <!-- Bottom Section: Mini Card & Controls -->
-        <div class="bottom-section">
-            <!-- Small Player Card Preview -->
-            <div class="mini-card" id="miniCard">
-                <!-- JavaScript will fill 5x5 grid -->
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="action-buttons">
-                <button id="refreshBtn" onclick="refreshCard()">Refresh</button>
-                <button id="startBtn" onclick="startGame()">Start game</button>
-            </div>
+        <!-- Action Controls -->
+        <div class="action-buttons">
+            <button id="refreshBtn" onclick="refreshCard()">Refresh Card</button>
+            <button id="bingoBtn" onclick="declareBingo()">BINGO!</button>
         </div>
     </div>
 
