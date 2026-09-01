@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
-const token = process.env.TELEGRAM_BOT_TOKEN || "YOUR_BOT_TOKEN";
+const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAGWUEzt7q70yRm2BgldnNiBTRmfz6Anhys";
 const bot = new TelegramBot(token, { polling: true });
 
 const users = {};
@@ -43,7 +43,7 @@ bot.onText(/\/deposit/, (msg) => {
         "Transfer funds via Telebirr to:\n" +
         "📱 *Number:* `0900071279`\n" +
         "👤 *Account Name:* robel\n\n" +
-        "Your balance will be updated after verification.", { parse_phone: "Markdown", parse_mode: "Markdown" });
+        "Your balance will be updated after verification.", { parse_mode: "Markdown" });
 });
 
 bot.onText(/\/withdraw/, (msg) => {
