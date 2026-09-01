@@ -1,9 +1,21 @@
-// Generate a random 5x5 Bingo Card with numbers 1 to 75
-function generateCard() {
-    const card = document.getElementById('bingoCard');
+// Generate Master Board (1 to 75 numbers)
+function generateMasterBoard() {
+    const board = document.getElementById('masterBoard');
+    board.innerHTML = '';
+    for (let i = 1; i <= 75; i++) {
+        const cell = document.createElement('div');
+        cell.classList.add('board-cell');
+        cell.id = `master-${i}`;
+        cell.innerText = i;
+        board.appendChild(cell);
+    }
+}
+
+// Generate Player's 5x5 Mini Card
+function generateMiniCard() {
+    const card = document.getElementById('miniCard');
     card.innerHTML = '';
     
-    // Simple random number generator for 25 unique cells
     let numbers = [];
     while(numbers.length < 25) {
         let r = Math.floor(Math.random() * 75) + 1;
@@ -12,16 +24,14 @@ function generateCard() {
 
     numbers.forEach((num, index) => {
         const cell = document.createElement('div');
-        cell.classList.add('bingo-cell');
+        cell.classList.add('mini-cell');
         cell.innerText = num;
         
-        // Center space can be free
         if (index === 12) {
-            cell.innerText = "FREE";
+            cell.innerText = "*";
             cell.classList.add('daubed');
         }
 
-        // Allow manual touch daubing at any time
         cell.addEventListener('click', () => {
             if (index !== 12) {
                 cell.classList.toggle('daubed');
@@ -32,10 +42,16 @@ function generateCard() {
     });
 }
 
-// Manual Bingo Button Action
-function declareBingo() {
-    alert("BINGO claimed! Verifying card pattern...");
+function refreshCard() {
+    generateMiniCard();
 }
 
-// Initialize card on load
-window.onload = generateCard;
+function startGame() {
+    alert("Game started! Watch for called numbers.");
+}
+
+// Initialize on load
+window.onload = () => {
+    generateMasterBoard();
+    generateMiniCard();
+};
