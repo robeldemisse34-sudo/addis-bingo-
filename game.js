@@ -1,4 +1,3 @@
-// Generate Master Board (1 to 75 numbers)
 function generateMasterBoard() {
     const board = document.getElementById('masterBoard');
     board.innerHTML = '';
@@ -11,9 +10,8 @@ function generateMasterBoard() {
     }
 }
 
-// Generate Player's 5x5 Mini Card
-function generateMiniCard() {
-    const card = document.getElementById('miniCard');
+function generatePlayerCard() {
+    const card = document.getElementById('bingoCard');
     card.innerHTML = '';
     
     let numbers = [];
@@ -24,11 +22,11 @@ function generateMiniCard() {
 
     numbers.forEach((num, index) => {
         const cell = document.createElement('div');
-        cell.classList.add('mini-cell');
+        cell.classList.add('bingo-cell');
         cell.innerText = num;
         
         if (index === 12) {
-            cell.innerText = "*";
+            cell.innerText = "★";
             cell.classList.add('daubed');
         }
 
@@ -43,15 +41,14 @@ function generateMiniCard() {
 }
 
 function refreshCard() {
-    generateMiniCard();
+    generatePlayerCard();
 }
 
-function startGame() {
-    alert("Game started! Watch for called numbers.");
+function declareBingo() {
+    alert("BINGO claimed!");
 }
 
-// Initialize on load
 window.onload = () => {
     generateMasterBoard();
-    generateMiniCard();
+    generatePlayerCard();
 };
