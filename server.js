@@ -16,6 +16,9 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 const BINGO_APP_URL = 'https://addis-bingo-green.vercel.app/';
 const photoUrl = 'https://raw.githubusercontent.com/robeldemisse34-sudo/addis-bingo-/main/IMG_20260901_224307_224.jpg';
 
+// In-memory set to track registered users
+const registeredUsers = new Set();
+
 // 1. /start Command
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -53,16 +56,20 @@ bot.on('callback_query', (query) => {
   bot.answerCallbackQuery(query.id);
 
   if (data === 'action_register') {
-    // Prompts the user to share contact
-    bot.sendMessage(chatId, "Click the button below to share your contact number for registration:", {
-      reply_markup: {
-        keyboard: [
-          [{ text: "📱 Share Contact", request_contact: true }]
-        ],
-        resize_keyboard: true,
-        one_time_keyboard: true
-      }
-    });
+    // Check if the user is already registered
+    if (registeredUsers.has(chatId)) {
+      bot.sendMessage(chatId, "⚠️ You are already registered!");
+    } else {
+      bot.sendMessage(chatId, "Click the button below to share your contact number for registration:", {
+        reply_markup: {
+          keyboard: [
+            [{ text: "📱 Share Contact", request_contact: true }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+      });
+    }
   } else if (data === 'action_deposit') {
     bot.sendMessage(chatId, "💵 Deposit options will be processed inside the Mini App.");
   } else if (data === 'action_balance') {
@@ -79,6 +86,9 @@ bot.on('contact', (msg) => {
   const chatId = msg.chat.id;
   const phoneNumber = msg.contact.phone_number;
   const firstName = msg.contact.first_name || '';
+
+  // Save user into the registered set
+  registeredUsers.add(chatId);
 
   bot.sendMessage(chatId, `✅ Thank you ${firstName}! Your phone number (${phoneNumber}) has been registered successfully.`, {
     reply_markup: { remove_keyboard: true }
