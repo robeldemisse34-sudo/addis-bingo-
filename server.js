@@ -1,3 +1,12 @@
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Addis Bingo Bot is active!\n');
+}).listen(PORT, () => {
+  console.log(`HTTP server listening on port ${PORT}`);
+});
 const TelegramBot = require('node-telegram-bot-api');
 
 // Your Bot Token from BotFather
