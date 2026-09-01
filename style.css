@@ -19,7 +19,6 @@ body {
     gap: 12px;
 }
 
-/* Stats Bar */
 .stats-bar {
     display: flex;
     justify-content: space-around;
@@ -48,7 +47,6 @@ body {
     color: #4b3869;
 }
 
-/* 1-100 Card Selector Grid */
 .card-selector-grid {
     display: grid;
     grid-template-columns: repeat(10, 1fr);
@@ -78,7 +76,6 @@ body {
     color: white;
 }
 
-/* Bottom Section */
 .bottom-section {
     display: flex;
     align-items: center;
@@ -86,7 +83,6 @@ body {
     gap: 12px;
 }
 
-/* 5x5 Player Card */
 .bingo-card {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -116,7 +112,6 @@ body {
     color: white;
 }
 
-/* Action Buttons */
 .action-buttons {
     display: flex;
     flex-direction: column;
