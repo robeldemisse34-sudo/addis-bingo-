@@ -51,7 +51,7 @@ function resetDepositState(chatId) {
     delete userDepositState[chatId];
 }
 
-// --- TELEGRAM BOT /start HANDLER ---
+// --- TELEGRAM BOT /start HANDLER (CHANNEL CHECK REMOVED) ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     const photoUrl = "https://i.ibb.co/3sS8M3f/addis-bingo.jpg";
