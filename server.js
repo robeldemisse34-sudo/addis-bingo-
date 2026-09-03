@@ -10,7 +10,7 @@ const io = new Server(server, {
 });
 
 const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "461465625";
 
 const bot = new TelegramBot(token, {
   polling: {
@@ -29,6 +29,7 @@ bot.on('polling_error', (error) => {
 app.use(express.static('.'));
 app.use(express.json());
 
+// In-memory data store
 const userStates = {};
 const userBalances = {};
 const processedTransactions = new Set();
@@ -37,7 +38,7 @@ const mainKeyboard = {
   reply_markup: {
     keyboard: [
       [{ text: "Play Bingo 🎰" }, { text: "Play Spin 🎰" }],
-      [{ text: "Register 📝" }, { text: "Deposit 💵" }],
+      [{ text: "Register 📝" }, { text: "Deposit 💵" }, { text: "Withdraw 🏧" }],
       [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
       [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
     ],
@@ -66,16 +67,18 @@ bot.on('message', (msg) => {
 
   if (text.startsWith('/')) return;
 
+  // 1. DEPOSIT FLOW: Step 1 - Amount
   if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
       return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., 100):");
     }
     userStates[chatId] = { step: 'AWAITING_PROOF', amount: amount };
-    return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send your Telebirr Transaction ID (e.g. \`DI38EQPZ4Y\`) or a screenshot of your receipt:`, { parse_mode: 'Markdown' });
+    return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send your Telebirr Transaction ID or a screenshot of your receipt:`, { parse_mode: 'Markdown' });
   }
 
-  if ((userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') || (msg.photo && userStates[chatId])) {
+  // DEPOSIT FLOW: Step 2 - Proof Submission
+  if ((userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') || (msg.photo && userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF')) {
     const depositAmount = userStates[chatId].amount || "Unspecified";
     const txId = text.toUpperCase();
 
@@ -89,7 +92,7 @@ bot.on('message', (msg) => {
 
     delete userStates[chatId];
 
-    bot.sendMessage(chatId, "⏳ Your Telebirr transaction verification request has been sent to Admin! You will be notified instantly once approved.", mainKeyboard);
+    bot.sendMessage(chatId, "⏳ Your Telebirr deposit verification request has been sent to Admin! You will be notified instantly once approved.", mainKeyboard);
 
     const adminMsg = `🚨 *NEW TELEBIRR DEPOSIT REQUEST*\n\n` +
       `👤 *User:* ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
@@ -117,15 +120,73 @@ bot.on('message', (msg) => {
     }
   }
 
+  // 2. WITHDRAWAL FLOW: Step 1 - Amount Input
+  if (userStates[chatId] === 'AWAITING_WITHDRAW_AMOUNT') {
+    const amount = parseFloat(text);
+    const currentBalance = userBalances[chatId] || 0;
+
+    if (isNaN(amount) || amount <= 0) {
+      return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., 100):");
+    }
+
+    if (amount > currentBalance) {
+      return bot.sendMessage(chatId, `❌ Insufficient balance! Your current balance is *${currentBalance} ETB*. Please enter a smaller amount:`, { parse_mode: 'Markdown' });
+    }
+
+    userStates[chatId] = { step: 'AWAITING_WITHDRAW_PHONE', amount: amount };
+    return bot.sendMessage(chatId, `🏧 Withdrawal Amount: *${amount} ETB*\n\nPlease enter your Telebirr Phone Number (e.g., \`0912345678\`):`, { parse_mode: 'Markdown' });
+  }
+
+  // WITHDRAWAL FLOW: Step 2 - Phone Number Input
+  if (userStates[chatId] && userStates[chatId].step === 'AWAITING_WITHDRAW_PHONE') {
+    const withdrawAmount = userStates[chatId].amount;
+    const phone = text;
+
+    delete userStates[chatId];
+
+    bot.sendMessage(chatId, `⏳ Your withdrawal request of *${withdrawAmount} ETB* to *${phone}* has been sent to Admin for approval.`, { parse_mode: 'Markdown', ...mainKeyboard });
+
+    const adminMsg = `🏧 *NEW WITHDRAWAL REQUEST*\n\n` +
+      `👤 *User:* ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
+      `🆔 *User ID:* \`${chatId}\`\n` +
+      `💵 *Amount:* *${withdrawAmount} ETB*\n` +
+      `📱 *Telebirr Phone:* \`${phone}\`\n` +
+      `💰 *User Current Balance:* ${userBalances[chatId] || 0} ETB`;
+
+    const adminButtons = {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Confirm Paid & Deduct", callback_data: `wdapprove_${chatId}_${withdrawAmount}` },
+            { text: "❌ Reject", callback_data: `wdreject_${chatId}` }
+          ]
+        ]
+      }
+    };
+
+    return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
+  }
+
+  // Menu Handling
   switch (text) {
     case "Deposit 💵":
       userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
       bot.sendMessage(chatId, "💳 Enter the amount you wish to deposit (in ETB):");
       break;
 
-    case "Check Balance 💰":
+    case "Withdraw 🏧":
       const balance = userBalances[chatId] || 0;
-      bot.sendMessage(chatId, `💰 Your current balance is: *${balance} ETB*`, { parse_mode: 'Markdown' });
+      if (balance <= 0) {
+        return bot.sendMessage(chatId, "❌ You have 0 ETB balance. Deposit or play to earn funds before withdrawing!");
+      }
+      userStates[chatId] = 'AWAITING_WITHDRAW_AMOUNT';
+      bot.sendMessage(chatId, `💰 Your Available Balance: *${balance} ETB*\n\nEnter the amount you wish to withdraw (in ETB):`, { parse_mode: 'Markdown' });
+      break;
+
+    case "Check Balance 💰":
+      const currentBal = userBalances[chatId] || 0;
+      bot.sendMessage(chatId, `💰 Your current balance is: *${currentBal} ETB*`, { parse_mode: 'Markdown' });
       break;
 
     case "Register 📝":
@@ -144,7 +205,7 @@ bot.on('message', (msg) => {
       bot.sendMessage(chatId, `✉️ Referral link:\nhttps://t.me/Adissbingoobot?start=${chatId}`);
       break;
 
-        case "Play Bingo 🎰":
+    case "Play Bingo 🎰":
       bot.sendMessage(chatId, "🎰 Click below to launch Addis Bingo:", {
         reply_markup: {
           inline_keyboard: [
@@ -164,9 +225,6 @@ bot.on('message', (msg) => {
       });
       break;
 
-      bot.sendMessage(chatId, "🎰 Launching game session...");
-      break;
-
     default:
       if (userStates[chatId]) return;
       bot.sendMessage(chatId, "Please select an option from the menu below:", mainKeyboard);
@@ -174,15 +232,17 @@ bot.on('message', (msg) => {
   }
 });
 
+// Admin Callbacks (Deposits & Withdrawals)
 bot.on('callback_query', (query) => {
   const data = query.data;
   const queryId = query.id;
   const fromAdminId = query.from.id.toString();
 
   if (fromAdminId !== ADMIN_CHAT_ID) {
-    return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized! Only the main Admin can approve transactions.", show_alert: true });
+    return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized! Only the main Admin can process requests.", show_alert: true });
   }
 
+  // --- DEPOSIT APPROVALS ---
   if (data.startsWith('approve_')) {
     const [, targetUserId, amountStr, txId] = data.split('_');
     const amount = parseFloat(amountStr) || 0;
@@ -190,7 +250,7 @@ bot.on('callback_query', (query) => {
     userBalances[targetUserId] = (userBalances[targetUserId] || 0) + amount;
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
-    bot.editMessageText(`✅ *APPROVED*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\` (Tx: ${txId})`, {
+    bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\` (Tx: ${txId})`, {
       chat_id: ADMIN_CHAT_ID,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
@@ -201,13 +261,48 @@ bot.on('callback_query', (query) => {
     const [, targetUserId] = data.split('_');
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
-    bot.editMessageText(`❌ *REJECTED*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
+    bot.editMessageText(`❌ *REJECTED DEPOSIT*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
       chat_id: ADMIN_CHAT_ID,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
 
     bot.sendMessage(targetUserId, "❌ Your deposit request was rejected. If you believe this is an error, please reach out to Support.");
+  }
+
+  // --- WITHDRAWAL APPROVALS ---
+  else if (data.startsWith('wdapprove_')) {
+    const [, targetUserId, amountStr] = data.split('_');
+    const amount = parseFloat(amountStr) || 0;
+    const currentBalance = userBalances[targetUserId] || 0;
+
+    if (currentBalance < amount) {
+      bot.answerCallbackQuery(queryId, { text: "Error: User balance is now lower than requested amount!", show_alert: true });
+      return;
+    }
+
+    // Deduct money from user balance
+    userBalances[targetUserId] -= amount;
+
+    bot.answerCallbackQuery(queryId, { text: "Withdrawal Approved & Balance Deducted!" });
+    bot.editMessageText(`✅ *WITHDRAWAL COMPLETED*\nAmount: ${amount} ETB paid and deducted from User ID \`${targetUserId}\`.\nRemaining Balance: ${userBalances[targetUserId]} ETB`, {
+      chat_id: ADMIN_CHAT_ID,
+      message_id: query.message.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* has been sent to your Telebirr account.\nRemaining Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
+  } else if (data.startsWith('wdreject_')) {
+    const [, targetUserId] = data.split('_');
+
+    bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!" });
+    bot.editMessageText(`❌ *WITHDRAWAL REJECTED*\nWithdrawal request for User ID \`${targetUserId}\` was declined.`, {
+      chat_id: ADMIN_CHAT_ID,
+      message_id: query.message.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    bot.sendMessage(targetUserId, "❌ Your withdrawal request was declined. Your balance remains unchanged. Please contact support for details.");
   }
 });
 
