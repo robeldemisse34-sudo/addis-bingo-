@@ -47,7 +47,7 @@
     <div class="stats-bar">
       <div class="stat-box">
         <span class="stat-title">Wallet</span>
-        <span class="stat-value" id="walletBalance">100.00</span>
+        <span class="stat-value" id="walletBalance">0.00</span>
       </div>
       <div class="stat-box">
         <span class="stat-title">Bonus</span>
@@ -126,7 +126,16 @@
       let currentReservations = {};
       let activeGames = 0;
 
-      // 1. Selector Grid Rendering
+      // 1. Live Wallet Balance Listener
+      db.ref("users/" + currentUserId + "/balance").on("value", (snapshot) => {
+        const currentBalance = snapshot.exists() ? snapshot.val() : 0.00;
+        const walletDisplay = document.getElementById("walletBalance");
+        if (walletDisplay) {
+          walletDisplay.textContent = Number(currentBalance).toFixed(2);
+        }
+      });
+
+      // 2. Selector Grid Rendering
       function renderGrid() {
         if (!grid) return;
         grid.innerHTML = "";
@@ -159,7 +168,7 @@
         return nums;
       }
 
-      // 2. 5x5 Bingo Preview Card (B-I-N-G-O Columns)
+      // 3. 5x5 Bingo Preview Card
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
@@ -184,7 +193,7 @@
         }
       }
 
-      // 3. Card Reservation with Balance & Single-Card Enforcers
+      // 4. Card Reservation Enforcement
       if (startBtn) {
         startBtn.addEventListener("click", () => {
           const wallet = parseFloat(document.getElementById("walletBalance").textContent);
@@ -208,7 +217,7 @@
         });
       }
 
-      // 4. Real-Time Firebase Database Listeners
+      // 5. Real-Time Firebase Database Listeners
       db.ref("reservations").on("value", (snapshot) => {
         currentReservations = snapshot.val() || {};
         const playerKeys = Object.keys(currentReservations);
@@ -228,7 +237,7 @@
         if (activeGamesDisplay) activeGamesDisplay.textContent = activeGames;
       });
 
-      // 5. Global 30-Second Countdown Logic
+      // 6. Global 30-Second Countdown Logic
       let isTimerRunning = false;
       function startCountdown() {
         if (isTimerRunning) return;
