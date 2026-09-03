@@ -1,6 +1,6 @@
 body {
-    background-color: #9b87d3;
-    color: #ffffff;
+    background-color: #f5f0eb;
+    color: #121c42;
     font-family: Arial, sans-serif;
     display: flex;
     justify-content: center;
@@ -30,11 +30,12 @@ body {
 
 .stat-box {
     background: #ffffff;
-    color: #4b3869;
+    color: #121c42;
     padding: 3px 10px;
     border-radius: 14px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border: 1px solid #e0d7ce;
     flex: 1;
 }
 
@@ -42,18 +43,18 @@ body {
     display: block;
     font-size: 0.6rem;
     font-weight: bold;
-    color: #8c7ba8;
+    color: #5d6882;
 }
 
 .stat-value {
     font-size: 0.75rem;
     font-weight: bold;
-    color: #4b3869;
+    color: #121c42;
 }
 
 #depositBtn {
-    background-color: #4caf50;
-    color: white;
+    background-color: #121c42;
+    color: #ffffff;
     border: none;
     padding: 6px 10px;
     font-size: 0.7rem;
@@ -70,8 +71,8 @@ body {
 }
 
 .selector-cell {
-    background-color: #d1c4e9;
-    color: #333;
+    background-color: #ffffff;
+    color: #121c42;
     aspect-ratio: 1;
     display: flex;
     justify-content: center;
@@ -80,11 +81,13 @@ body {
     font-weight: bold;
     border-radius: 3px;
     cursor: pointer;
+    border: 1px solid #e0d7ce;
 }
 
 .selector-cell.selected {
-    background-color: #4caf50;
-    color: white;
+    background-color: #121c42;
+    color: #ffffff;
+    border-color: #121c42;
 }
 
 .bottom-section {
@@ -99,17 +102,17 @@ body {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 2px;
-    background: rgba(0, 0, 0, 0.15);
+    background: #121c42;
     padding: 3px;
-    border-radius: 4px;
+    border-radius: 6px;
     width: 105px;
     height: 105px;
     flex-shrink: 0;
 }
 
 .bingo-cell {
-    background-color: #e8eaf6;
-    color: #333;
+    background-color: #ffffff;
+    color: #121c42;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -121,8 +124,8 @@ body {
 }
 
 .bingo-cell.daubed {
-    background-color: #ff9800;
-    color: white;
+    background-color: #1c2a5e;
+    color: #ffffff;
 }
 
 .action-buttons {
@@ -132,9 +135,9 @@ body {
 }
 
 #refreshBtn {
-    background-color: #03a9f4;
-    color: white;
-    border: none;
+    background-color: #ede7e0;
+    color: #121c42;
+    border: 1px solid #e0d7ce;
     padding: 10px 4px;
     font-size: 0.75rem;
     font-weight: bold;
@@ -145,8 +148,8 @@ body {
 }
 
 #startBtn {
-    background-color: #ff6d00;
-    color: white;
+    background-color: #121c42;
+    color: #ffffff;
     border: none;
     padding: 10px 4px;
     font-size: 0.75rem;
@@ -166,36 +169,39 @@ body {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0,0,0,0.5);
+    background-color: rgba(18, 28, 66, 0.6);
     justify-content: center;
     align-items: center;
 }
 
 .modal-content {
     background-color: #ffffff;
-    color: #333;
+    color: #121c42;
     padding: 20px;
     border-radius: 10px;
     width: 80%;
     max-width: 280px;
     text-align: center;
+    border: 1px solid #e0d7ce;
 }
 
 .modal-content h3 {
     margin-top: 0;
-    color: #4b3869;
+    color: #121c42;
 }
 
 .payment-option {
-    background: #f1f1f1;
+    background: #f5f0eb;
+    color: #121c42;
     padding: 8px;
     margin: 8px 0;
     border-radius: 5px;
     font-size: 0.8rem;
+    border: 1px solid #e0d7ce;
 }
 
 #closeModalBtn {
-    background-color: #ff4757;
+    background-color: #121c42;
     color: white;
     border: none;
     padding: 8px 16px;
