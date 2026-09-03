@@ -144,8 +144,26 @@ bot.on('message', (msg) => {
       bot.sendMessage(chatId, `✉️ Referral link:\nhttps://t.me/Adissbingoobot?start=${chatId}`);
       break;
 
-    case "Play Bingo 🎰":
+        case "Play Bingo 🎰":
+      bot.sendMessage(chatId, "🎰 Click below to launch Addis Bingo:", {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🎰 Play Bingo", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+          ]
+        }
+      });
+      break;
+
     case "Play Spin 🎰":
+      bot.sendMessage(chatId, "🎰 Click below to launch Addis Spin:", {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "🎰 Play Spin", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+          ]
+        }
+      });
+      break;
+
       bot.sendMessage(chatId, "🎰 Launching game session...");
       break;
 
