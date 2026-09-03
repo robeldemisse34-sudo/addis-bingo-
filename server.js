@@ -9,8 +9,7 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-const token = process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_u0m3z0a0";
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
+const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
 
 // Bot instance with polling error handling
 const bot = new TelegramBot(token, {
