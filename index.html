@@ -18,7 +18,7 @@
       </div>
       <div class="stat-box">
         <span class="stat-title">Bonus</span>
-        <span class="stat-value" id="bonusBalance">0.00</span>
+        <span class="stat-value" id="bonusBalance">0</span>
       </div>
       <div class="stat-box">
         <span class="stat-title">Stake</span>
@@ -84,11 +84,11 @@
         preview.innerHTML = "";
 
         // Standard 5x5 Bingo Column Ranges
-        const colB = getRandomNumbers(1, 15, 5);   // Column 1 (B)
-        const colI = getRandomNumbers(16, 30, 5);  // Column 2 (I)
-        const colN = getRandomNumbers(31, 45, 5);  // Column 3 (N)
-        const colG = getRandomNumbers(46, 60, 5);  // Column 4 (G)
-        const colO = getRandomNumbers(61, 75, 5);  // Column 5 (O)
+        const colB = getRandomNumbers(1, 15, 5);   // Column 1 (B: 1-15)
+        const colI = getRandomNumbers(16, 30, 5);  // Column 2 (I: 16-30)
+        const colN = getRandomNumbers(31, 45, 5);  // Column 3 (N: 31-45)
+        const colG = getRandomNumbers(46, 60, 5);  // Column 4 (G: 46-60)
+        const colO = getRandomNumbers(61, 75, 5);  // Column 5 (O: 61-75)
 
         // Read row-by-row for 5x5 grid layout rendering
         for (let row = 0; row < 5; row++) {
