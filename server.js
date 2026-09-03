@@ -33,7 +33,7 @@ app.use(express.json());
 const userStates = {};
 const userBalances = {};
 const processedTransactions = new Set();
-const processedCallbacks = new Set(); // Prevents duplicate clicks on the same button
+const processedCallbacks = new Set();
 
 const mainKeyboard = {
   reply_markup: {
@@ -47,14 +47,11 @@ const mainKeyboard = {
   }
 };
 
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  const firstName = msg.from.first_name || "Player";
-  
+// Helper function for sending welcome message
+function sendWelcome(chatId, firstName) {
   if (!userBalances[chatId]) {
     userBalances[chatId] = 0;
   }
-
   delete userStates[chatId];
 
   const welcomeMessage = `👋 Welcome to Addis Bingo, ${firstName}!\n\n` +
@@ -62,15 +59,40 @@ bot.onText(/\/start/, (msg) => {
     `Choose an option below to get started:`;
 
   bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
-});
+}
+
+// Register slash commands for Telegram UI menu
+bot.setMyCommands([
+  { command: 'start', description: 'Start the bot' },
+  { command: 'playbingo', description: 'Start playing Bingo' },
+  { command: 'playspin', description: 'Start playing Spin' },
+  { command: 'register', description: 'Register for an account' },
+  { command: 'balance', description: 'Check account balance' },
+  { command: 'deposit', description: 'Deposit funds into your account' },
+  { command: 'withdraw', description: 'Withdraw funds' },
+  { command: 'instruction', description: 'View instructions' },
+  { command: 'invite', description: 'Get referral link' },
+  { command: 'support', description: 'Contact support' }
+]);
 
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text ? msg.text.trim() : '';
+  const rawText = msg.text ? msg.text.trim() : '';
 
-  if (text.startsWith('/')) return;
+  // Standardize command inputs from yellow menu
+  let text = rawText;
+  if (rawText === '/start') return sendWelcome(chatId, msg.from.first_name || "Player");
+  if (rawText === '/playbingo') text = "Play Bingo 🎰";
+  if (rawText === '/playspin') text = "Play Spin 🎰";
+  if (rawText === '/register') text = "Register 📝";
+  if (rawText === '/balance') text = "Check Balance 💰";
+  if (rawText === '/deposit') text = "Deposit 💵";
+  if (rawText === '/withdraw') text = "Withdraw 🏧";
+  if (rawText === '/instruction') text = "Instruction 📖";
+  if (rawText === '/invite') text = "Invite ✉️";
+  if (rawText === '/support') text = "Contact Support 📞";
 
-  // DEPOSIT FLOW: Step 1 - Amount
+  // DEPOSIT FLOW: Step 1 - Amount Input
   if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
@@ -80,15 +102,13 @@ bot.on('message', (msg) => {
     return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send a valid 10-character Telebirr Transaction ID (e.g., \`DI38EQPZ4Y\`) or a screenshot of your payment receipt:`, { parse_mode: 'Markdown' });
   }
 
-  // DEPOSIT FLOW: Step 2 - Proof Verification
+  // DEPOSIT FLOW: Step 2 - Proof Submission
   if (userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') {
     const depositAmount = userStates[chatId].amount;
 
-    // Handle Photo Receipts
     if (msg.photo) {
-      delete userStates[chatId]; // Instantly clear state
-
-      const reqId = Date.now(); // Unique request ID
+      delete userStates[chatId];
+      const reqId = Date.now();
       bot.sendMessage(chatId, "⏳ Your Telebirr screenshot receipt has been submitted to Admin for verification!", mainKeyboard);
 
       const photoId = msg.photo[msg.photo.length - 1].file_id;
@@ -112,7 +132,6 @@ bot.on('message', (msg) => {
       return bot.sendPhoto(ADMIN_CHAT_ID, photoId, { caption: adminMsg, ...adminButtons });
     }
 
-    // Handle Text Transaction IDs
     const txId = text.toUpperCase();
     const telebirrRegex = /^[A-Z0-9]{9,12}$/;
 
@@ -125,7 +144,7 @@ bot.on('message', (msg) => {
     }
 
     processedTransactions.add(txId);
-    delete userStates[chatId]; // Instantly clear state
+    delete userStates[chatId];
 
     const reqId = Date.now();
     bot.sendMessage(chatId, "⏳ Your Telebirr deposit verification request has been sent to Admin!", mainKeyboard);
@@ -203,7 +222,7 @@ bot.on('message', (msg) => {
     return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
   }
 
-  // Navigation Menu
+  // Navigation Options
   switch (text) {
     case "Deposit 💵":
       userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
@@ -261,13 +280,13 @@ bot.on('message', (msg) => {
       break;
 
     default:
-      if (userStates[chatId]) return;
+      if (userStates[chatId] || rawText.startsWith('/')) return;
       bot.sendMessage(chatId, "Please select an option from the menu below:", mainKeyboard);
       break;
   }
 });
 
-// Admin Callback Handlers
+// Admin Callbacks
 bot.on('callback_query', (query) => {
   const data = query.data;
   const queryId = query.id;
@@ -277,7 +296,6 @@ bot.on('callback_query', (query) => {
     return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized!", show_alert: true });
   }
 
-  // Lock duplicate callback executions
   if (processedCallbacks.has(data)) {
     return bot.answerCallbackQuery(queryId, { text: "⚠️ This request has already been processed!", show_alert: true });
   }
