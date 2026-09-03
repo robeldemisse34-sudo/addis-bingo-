@@ -10,7 +10,7 @@
 
   <div class="game-container">
     
-    <!-- Top Stats Bar -->
+    <!-- Top Stats Bar: Wallet, Bonus, Active Game, Stake -->
     <div class="stats-bar">
       <div class="stat-box">
         <span class="stat-title">Wallet</span>
@@ -19,6 +19,10 @@
       <div class="stat-box">
         <span class="stat-title">Bonus</span>
         <span class="stat-value" id="bonusBalance">0</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-title">Active Game</span>
+        <span class="stat-value" id="activeGames">0</span>
       </div>
       <div class="stat-box">
         <span class="stat-title">Stake</span>
@@ -46,7 +50,12 @@
       const grid = document.getElementById("cardSelectorGrid");
       const preview = document.getElementById("bingoCardPreview");
       const refreshBtn = document.getElementById("refreshBtn");
+      const startBtn = document.getElementById("startBtn");
+      const activeGamesDisplay = document.getElementById("activeGames");
+
       let selectedCardIndex = 1;
+      let activeGamesCount = 0;
+      const MAX_ACTIVE_GAMES = 2; // Set max active limit (1 or 2)
 
       // 1. Generate 100 selector cells
       function renderGrid() {
@@ -108,6 +117,19 @@
             preview.appendChild(cell);
           });
         }
+      }
+
+      // 3. Handle Active Games & Alert Message
+      if (startBtn) {
+        startBtn.addEventListener("click", () => {
+          if (activeGamesCount >= MAX_ACTIVE_GAMES) {
+            alert("Please wait until the current game is ended before starting a new one.");
+          } else {
+            activeGamesCount++;
+            activeGamesDisplay.textContent = activeGamesCount;
+            alert(`Game started for Card #${selectedCardIndex}!`);
+          }
+        });
       }
 
       renderGrid();
