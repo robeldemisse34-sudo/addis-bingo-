@@ -68,19 +68,36 @@
         }
       }
 
-      // 2. Generate 5x5 Bingo Preview Card
+      // Helper to generate unique random numbers within a range
+      function getRandomNumbers(min, max, count) {
+        const nums = [];
+        while (nums.length < count) {
+          const rand = Math.floor(Math.random() * (max - min + 1)) + min;
+          if (!nums.includes(rand)) nums.push(rand);
+        }
+        return nums;
+      }
+
+      // 2. Generate 5x5 Bingo Preview Card with precise row ranges
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
-        const numbers = [];
-        while (numbers.length < 25) {
-          const rand = Math.floor(Math.random() * 75) + 1;
-          if (!numbers.includes(rand)) numbers.push(rand);
-        }
 
-        numbers.forEach((num, index) => {
+        // Standard 5x5 Bingo row ranges
+        const row1 = getRandomNumbers(1, 15, 5);   // 1 to 15
+        const row2 = getRandomNumbers(16, 30, 5);  // 16 to 30
+        const row3 = getRandomNumbers(31, 45, 5);  // 31 to 45
+        const row4 = getRandomNumbers(46, 60, 5);  // 46 to 60
+        const row5 = getRandomNumbers(61, 75, 5);  // 61 to 75
+
+        // Combine all rows into a single grid array
+        const cardNumbers = [...row1, ...row2, ...row3, ...row4, ...row5];
+
+        cardNumbers.forEach((num, index) => {
           const cell = document.createElement("div");
           cell.className = "bingo-cell";
+          
+          // Center element (Index 12: Row 3, Cell 3) is FREE
           if (index === 12) {
             cell.textContent = "FREE";
             cell.classList.add("daubed");
