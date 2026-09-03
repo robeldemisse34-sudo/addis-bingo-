@@ -9,7 +9,8 @@ const io = new Server(server, {
     cors: { origin: "*" }
 });
 
-const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAGWUEzt7q70yRm2BgldnNiBTRmfz6Anhys";
+const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_u0m3z0a0";
+
 
 // Error-handled bot instance to prevent 409 conflict crashes
 const bot = new TelegramBot(token, { 
