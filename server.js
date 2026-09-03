@@ -33,6 +33,7 @@ app.use(express.json());
 const userStates = {};
 const userBalances = {};
 const processedTransactions = new Set();
+const processedCallbacks = new Set(); // Prevents duplicate clicks on the same button
 
 const mainKeyboard = {
   reply_markup: {
@@ -69,7 +70,7 @@ bot.on('message', (msg) => {
 
   if (text.startsWith('/')) return;
 
-  // 1. DEPOSIT FLOW: Step 1 - Amount Input
+  // DEPOSIT FLOW: Step 1 - Amount
   if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
@@ -79,13 +80,15 @@ bot.on('message', (msg) => {
     return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send a valid 10-character Telebirr Transaction ID (e.g., \`DI38EQPZ4Y\`) or a screenshot of your payment receipt:`, { parse_mode: 'Markdown' });
   }
 
-  // DEPOSIT FLOW: Step 2 - Proof Validation & Submission
+  // DEPOSIT FLOW: Step 2 - Proof Verification
   if (userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') {
-    // If user sent a photo receipt, allow it
-    if (msg.photo) {
-      const depositAmount = userStates[chatId].amount;
-      delete userStates[chatId];
+    const depositAmount = userStates[chatId].amount;
 
+    // Handle Photo Receipts
+    if (msg.photo) {
+      delete userStates[chatId]; // Instantly clear state
+
+      const reqId = Date.now(); // Unique request ID
       bot.sendMessage(chatId, "⏳ Your Telebirr screenshot receipt has been submitted to Admin for verification!", mainKeyboard);
 
       const photoId = msg.photo[msg.photo.length - 1].file_id;
@@ -99,8 +102,8 @@ bot.on('message', (msg) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_PHOTO` },
-              { text: "❌ Reject", callback_data: `reject_${chatId}` }
+              { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_PHOTO_${reqId}` },
+              { text: "❌ Reject", callback_data: `reject_${chatId}_${reqId}` }
             ]
           ]
         }
@@ -109,7 +112,7 @@ bot.on('message', (msg) => {
       return bot.sendPhoto(ADMIN_CHAT_ID, photoId, { caption: adminMsg, ...adminButtons });
     }
 
-    // Strict Telebirr Transaction ID Format Check (Regex)
+    // Handle Text Transaction IDs
     const txId = text.toUpperCase();
     const telebirrRegex = /^[A-Z0-9]{9,12}$/;
 
@@ -122,9 +125,9 @@ bot.on('message', (msg) => {
     }
 
     processedTransactions.add(txId);
-    const depositAmount = userStates[chatId].amount;
-    delete userStates[chatId];
+    delete userStates[chatId]; // Instantly clear state
 
+    const reqId = Date.now();
     bot.sendMessage(chatId, "⏳ Your Telebirr deposit verification request has been sent to Admin!", mainKeyboard);
 
     const adminMsg = `🚨 *NEW TELEBIRR DEPOSIT REQUEST*\n\n` +
@@ -138,8 +141,8 @@ bot.on('message', (msg) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_${txId}` },
-            { text: "❌ Reject", callback_data: `reject_${chatId}` }
+            { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_${txId}_${reqId}` },
+            { text: "❌ Reject", callback_data: `reject_${chatId}_${reqId}` }
           ]
         ]
       }
@@ -148,7 +151,7 @@ bot.on('message', (msg) => {
     return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
   }
 
-  // 2. WITHDRAWAL FLOW
+  // WITHDRAWAL FLOW
   if (userStates[chatId] === 'AWAITING_WITHDRAW_AMOUNT') {
     const amount = parseFloat(text);
     const currentBalance = userBalances[chatId] || 0;
@@ -175,6 +178,7 @@ bot.on('message', (msg) => {
     const phone = text;
     delete userStates[chatId];
 
+    const reqId = Date.now();
     bot.sendMessage(chatId, `⏳ Your withdrawal request of *${withdrawAmount} ETB* to *${phone}* has been sent to Admin.`, { parse_mode: 'Markdown', ...mainKeyboard });
 
     const adminMsg = `🏧 *NEW WITHDRAWAL REQUEST*\n\n` +
@@ -189,8 +193,8 @@ bot.on('message', (msg) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Confirm Paid & Deduct", callback_data: `wdapprove_${chatId}_${withdrawAmount}` },
-            { text: "❌ Reject", callback_data: `wdreject_${chatId}` }
+            { text: "✅ Confirm Paid & Deduct", callback_data: `wdapprove_${chatId}_${withdrawAmount}_${reqId}` },
+            { text: "❌ Reject", callback_data: `wdreject_${chatId}_${reqId}` }
           ]
         ]
       }
@@ -199,7 +203,7 @@ bot.on('message', (msg) => {
     return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
   }
 
-  // General Menu Commands
+  // Navigation Menu
   switch (text) {
     case "Deposit 💵":
       userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
@@ -263,7 +267,7 @@ bot.on('message', (msg) => {
   }
 });
 
-// Admin Callbacks
+// Admin Callback Handlers
 bot.on('callback_query', (query) => {
   const data = query.data;
   const queryId = query.id;
@@ -273,7 +277,13 @@ bot.on('callback_query', (query) => {
     return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized!", show_alert: true });
   }
 
+  // Lock duplicate callback executions
+  if (processedCallbacks.has(data)) {
+    return bot.answerCallbackQuery(queryId, { text: "⚠️ This request has already been processed!", show_alert: true });
+  }
+
   if (data.startsWith('approve_')) {
+    processedCallbacks.add(data);
     const [, targetUserId, amountStr, txId] = data.split('_');
     const amount = parseFloat(amountStr) || 0;
 
@@ -288,6 +298,7 @@ bot.on('callback_query', (query) => {
 
     bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('reject_')) {
+    processedCallbacks.add(data);
     const [, targetUserId] = data.split('_');
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
@@ -299,6 +310,7 @@ bot.on('callback_query', (query) => {
 
     bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
   } else if (data.startsWith('wdapprove_')) {
+    processedCallbacks.add(data);
     const [, targetUserId, amountStr] = data.split('_');
     const amount = parseFloat(amountStr) || 0;
 
@@ -313,6 +325,7 @@ bot.on('callback_query', (query) => {
 
     bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('wdreject_')) {
+    processedCallbacks.add(data);
     const [, targetUserId] = data.split('_');
 
     bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!" });
