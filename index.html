@@ -5,12 +5,50 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Addis Bingo</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* In-App Notification Banner Styling */
+    .toast-banner {
+      position: fixed;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #ef4444;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: top 0.3s ease-in-out;
+      z-index: 1000;
+      white-space: nowrap;
+    }
+    .toast-banner.show {
+      top: 15px;
+    }
+
+    /* Countdown Bar Below Stats */
+    .timer-banner {
+      display: none;
+      background-color: #2563eb;
+      color: #ffffff;
+      text-align: center;
+      padding: 8px;
+      margin: 10px 0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
 
+  <!-- Toast Notification -->
+  <div id="toastBanner" class="toast-banner">Please wait until the current game has ended.</div>
+
   <div class="game-container">
     
-    <!-- Top Stats Bar: Wallet, Bonus, Active Game, Stake -->
+    <!-- Top Stats Bar -->
     <div class="stats-bar">
       <div class="stat-box">
         <span class="stat-title">Wallet</span>
@@ -28,6 +66,11 @@
         <span class="stat-title">Stake</span>
         <span class="stat-value" id="stakeAmount">10</span>
       </div>
+    </div>
+
+    <!-- Countdown Timer Banner -->
+    <div id="timerBanner" class="timer-banner">
+      2 Cards Reserved! Game starting in <span id="countdown">30</span>s...
     </div>
 
     <!-- 100-Card Selector Grid -->
@@ -52,10 +95,24 @@
       const refreshBtn = document.getElementById("refreshBtn");
       const startBtn = document.getElementById("startBtn");
       const activeGamesDisplay = document.getElementById("activeGames");
+      const toastBanner = document.getElementById("toastBanner");
+      const timerBanner = document.getElementById("timerBanner");
+      const countdownDisplay = document.getElementById("countdown");
 
       let selectedCardIndex = 1;
+      let reservedCardsCount = 0;
       let activeGamesCount = 0;
-      const MAX_ACTIVE_GAMES = 2; // Set max active limit (1 or 2)
+      let isCountdownRunning = false;
+      let countdownTimer = null;
+
+      // Custom toast banner function replacing ugly alert()
+      function showToast(message) {
+        toastBanner.textContent = message;
+        toastBanner.classList.add("show");
+        setTimeout(() => {
+          toastBanner.classList.remove("show");
+        }, 3000);
+      }
 
       // 1. Generate 100 selector cells
       function renderGrid() {
@@ -92,14 +149,12 @@
         if (!preview) return;
         preview.innerHTML = "";
 
-        // Standard 5x5 Bingo Column Ranges
-        const colB = getRandomNumbers(1, 15, 5);   // Column 1 (B: 1-15)
-        const colI = getRandomNumbers(16, 30, 5);  // Column 2 (I: 16-30)
-        const colN = getRandomNumbers(31, 45, 5);  // Column 3 (N: 31-45)
-        const colG = getRandomNumbers(46, 60, 5);  // Column 4 (G: 46-60)
-        const colO = getRandomNumbers(61, 75, 5);  // Column 5 (O: 61-75)
+        const colB = getRandomNumbers(1, 15, 5);   // 1-15
+        const colI = getRandomNumbers(16, 30, 5);  // 16-30
+        const colN = getRandomNumbers(31, 45, 5);  // 31-45
+        const colG = getRandomNumbers(46, 60, 5);  // 46-60
+        const colO = getRandomNumbers(61, 75, 5);  // 61-75
 
-        // Read row-by-row for 5x5 grid layout rendering
         for (let row = 0; row < 5; row++) {
           const rowNumbers = [colB[row], colI[row], colN[row], colG[row], colO[row]];
           
@@ -107,7 +162,6 @@
             const cell = document.createElement("div");
             cell.className = "bingo-cell";
             
-            // Middle cell (Row 2, Col 2) is FREE
             if (row === 2 && col === 2) {
               cell.textContent = "FREE";
               cell.classList.add("daubed");
@@ -119,15 +173,49 @@
         }
       }
 
-      // 3. Handle Active Games & Alert Message
+      // 3. Start 30-Second Countdown when 2 cards are reserved
+      function startCountdown() {
+        isCountdownRunning = true;
+        let secondsLeft = 30;
+        countdownDisplay.textContent = secondsLeft;
+        timerBanner.style.display = "block";
+
+        countdownTimer = setInterval(() => {
+          secondsLeft--;
+          countdownDisplay.textContent = secondsLeft;
+
+          if (secondsLeft <= 0) {
+            clearInterval(countdownTimer);
+            timerBanner.style.display = "none";
+            isCountdownRunning = false;
+            
+            // Start Active Game
+            activeGamesCount = 1;
+            activeGamesDisplay.textContent = activeGamesCount;
+            reservedCardsCount = 0;
+            showToast("Game Has Started!");
+          }
+        }, 1000);
+      }
+
+      // 4. Handle Card Reservations & Game Launch
       if (startBtn) {
         startBtn.addEventListener("click", () => {
-          if (activeGamesCount >= MAX_ACTIVE_GAMES) {
-            alert("Please wait until the current game is ended before starting a new one.");
-          } else {
-            activeGamesCount++;
-            activeGamesDisplay.textContent = activeGamesCount;
-            alert(`Game started for Card #${selectedCardIndex}!`);
+          // If a game is active or countdown is already running
+          if (activeGamesCount >= 1 || isCountdownRunning) {
+            showToast("Please wait until the current game ends.");
+            return;
+          }
+
+          if (reservedCardsCount < 2) {
+            reservedCardsCount++;
+            
+            if (reservedCardsCount === 1) {
+              showToast(`Card #${selectedCardIndex} reserved! Waiting for player 2...`);
+            } else if (reservedCardsCount === 2) {
+              showToast("2 Cards Reserved! Timer starting...");
+              startCountdown();
+            }
           }
         });
       }
