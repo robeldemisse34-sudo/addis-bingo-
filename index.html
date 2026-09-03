@@ -78,34 +78,36 @@
         return nums;
       }
 
-      // 2. Generate 5x5 Bingo Preview Card with precise row ranges
+      // 2. Generate 5x5 Bingo Card by Column (B-I-N-G-O)
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
 
-        // Standard 5x5 Bingo row ranges
-        const row1 = getRandomNumbers(1, 15, 5);   // 1 to 15
-        const row2 = getRandomNumbers(16, 30, 5);  // 16 to 30
-        const row3 = getRandomNumbers(31, 45, 5);  // 31 to 45
-        const row4 = getRandomNumbers(46, 60, 5);  // 46 to 60
-        const row5 = getRandomNumbers(61, 75, 5);  // 61 to 75
+        // Standard 5x5 Bingo Column Ranges
+        const colB = getRandomNumbers(1, 15, 5);   // Column 1 (B)
+        const colI = getRandomNumbers(16, 30, 5);  // Column 2 (I)
+        const colN = getRandomNumbers(31, 45, 5);  // Column 3 (N)
+        const colG = getRandomNumbers(46, 60, 5);  // Column 4 (G)
+        const colO = getRandomNumbers(61, 75, 5);  // Column 5 (O)
 
-        // Combine all rows into a single grid array
-        const cardNumbers = [...row1, ...row2, ...row3, ...row4, ...row5];
-
-        cardNumbers.forEach((num, index) => {
-          const cell = document.createElement("div");
-          cell.className = "bingo-cell";
+        // Read row-by-row for 5x5 grid layout rendering
+        for (let row = 0; row < 5; row++) {
+          const rowNumbers = [colB[row], colI[row], colN[row], colG[row], colO[row]];
           
-          // Center element (Index 12: Row 3, Cell 3) is FREE
-          if (index === 12) {
-            cell.textContent = "FREE";
-            cell.classList.add("daubed");
-          } else {
-            cell.textContent = num;
-          }
-          preview.appendChild(cell);
-        });
+          rowNumbers.forEach((num, col) => {
+            const cell = document.createElement("div");
+            cell.className = "bingo-cell";
+            
+            // Middle cell (Row 2, Col 2) is FREE
+            if (row === 2 && col === 2) {
+              cell.textContent = "FREE";
+              cell.classList.add("daubed");
+            } else {
+              cell.textContent = num;
+            }
+            preview.appendChild(cell);
+          });
+        }
       }
 
       renderGrid();
