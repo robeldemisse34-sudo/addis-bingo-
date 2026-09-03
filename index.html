@@ -14,12 +14,23 @@
   <style>
     /* In-App Toast Notification Banner */
     .toast-banner {
-      position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
-      background-color: #ef4444; color: #fff; padding: 10px 20px;
-      border-radius: 8px; font-weight: bold; font-size: 14px;
-      transition: top 0.3s ease; z-index: 1000; white-space: nowrap;
+      position: fixed; 
+      top: -70px; 
+      left: 50%; 
+      transform: translateX(-50%);
+      background: #1e293b; 
+      color: #fbbf24; 
+      border: 1.5px solid #f59e0b;
+      padding: 12px 24px;
+      border-radius: 12px; 
+      font-weight: 600; 
+      font-size: 14px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+      z-index: 1000; 
+      white-space: nowrap;
     }
-    .toast-banner.show { top: 15px; }
+    .toast-banner.show { top: 20px; }
 
     /* 30-Second Countdown Banner */
     .timer-banner {
@@ -28,10 +39,10 @@
       font-weight: bold; font-size: 14px;
     }
 
-    /* Reserved Cell Styling */
+    /* Reserved Cell Styling - Solid Blue */
     .selector-cell.occupied {
-      background-color: #f97316 !important;
-      color: #fff;
+      background-color: #2563eb !important;
+      color: #ffffff !important;
       pointer-events: none;
     }
   </style>
@@ -135,7 +146,7 @@
         }
       });
 
-      // 2. Selector Grid Rendering
+      // 2. Selector Grid Rendering (Blue Reserved Cards)
       function renderGrid() {
         if (!grid) return;
         grid.innerHTML = "";
@@ -146,10 +157,16 @@
           cell.className = "selector-cell";
           cell.textContent = i;
 
-          if (i === selectedCardIndex) cell.classList.add("selected");
-          if (reservedIndices.includes(i)) cell.classList.add("occupied");
+          if (reservedIndices.includes(i)) {
+            cell.classList.add("occupied");
+          }
+
+          if (i === selectedCardIndex && !reservedIndices.includes(i)) {
+            cell.classList.add("selected");
+          }
 
           cell.addEventListener("click", () => {
+            if (reservedIndices.includes(i)) return;
             document.querySelectorAll(".selector-cell").forEach(c => c.classList.remove("selected"));
             cell.classList.add("selected");
             selectedCardIndex = i;
@@ -159,24 +176,31 @@
         }
       }
 
-      function getRandomNumbers(min, max, count) {
+      // Deterministic Numbers Generator (Keeps numbers fixed for each Card ID)
+      function getFixedNumbersForCard(cardId, colIndex, count) {
         const nums = [];
+        const min = colIndex * 15 + 1;
+        const max = (colIndex + 1) * 15;
+        let seed = cardId * 100 + colIndex * 10;
+
         while (nums.length < count) {
-          const rand = Math.floor(Math.random() * (max - min + 1)) + min;
+          seed = (seed * 9301 + 49297) % 233280;
+          const rand = min + Math.floor((seed / 233280) * (max - min + 1));
           if (!nums.includes(rand)) nums.push(rand);
         }
         return nums;
       }
 
-      // 3. 5x5 Bingo Preview Card
+      // 3. Fixed 5x5 Bingo Preview Card
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
-        const colB = getRandomNumbers(1, 15, 5);
-        const colI = getRandomNumbers(16, 30, 5);
-        const colN = getRandomNumbers(31, 45, 5);
-        const colG = getRandomNumbers(46, 60, 5);
-        const colO = getRandomNumbers(61, 75, 5);
+
+        const colB = getFixedNumbersForCard(selectedCardIndex, 0, 5);
+        const colI = getFixedNumbersForCard(selectedCardIndex, 1, 5);
+        const colN = getFixedNumbersForCard(selectedCardIndex, 2, 5);
+        const colG = getFixedNumbersForCard(selectedCardIndex, 3, 5);
+        const colO = getFixedNumbersForCard(selectedCardIndex, 4, 5);
 
         for (let r = 0; r < 5; r++) {
           [colB[r], colI[r], colN[r], colG[r], colO[r]].forEach((num, c) => {
@@ -203,7 +227,7 @@
             return showToast("Please wait until the current game ends.");
           }
           if (wallet < stake) {
-            return showToast("Insufficient balance to reserve a card.");
+            return showToast("⚠️ Insufficient balance to reserve a card!");
           }
           if (currentReservations[currentUserId]) {
             return showToast("You have already reserved a card for this round!");
@@ -266,7 +290,12 @@
 
       renderGrid();
       generatePreviewCard();
-      if (refreshBtn) refreshBtn.addEventListener("click", generatePreviewCard);
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+          renderGrid();
+          generatePreviewCard();
+        });
+      }
     }
 
     if (document.readyState === "loading") {
