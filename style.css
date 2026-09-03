@@ -18,7 +18,7 @@ body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 }
 
 /* Header Stats Bar - Oval Pill Style */
@@ -34,7 +34,7 @@ body {
     background: #ffffff;
     color: #121c42;
     padding: 6px 12px;
-    border-radius: 20px; /* Oval pill shape */
+    border-radius: 20px;
     text-align: center;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     border: 1px solid #e0d7ce;
@@ -59,8 +59,10 @@ body {
 .card-selector-grid {
     display: grid;
     grid-template-columns: repeat(10, 1fr);
-    gap: 4px; /* Increased gap for breathing room */
-    padding: 4px;
+    gap: 4px;
+    padding: 2px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .selector-cell {
@@ -72,7 +74,7 @@ body {
     align-items: center;
     font-size: 0.7rem;
     font-weight: bold;
-    border-radius: 6px; /* Softly rounded corners */
+    border-radius: 6px;
     cursor: pointer;
     border: 1px solid #e0d7ce;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
