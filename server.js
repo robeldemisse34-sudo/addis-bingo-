@@ -28,74 +28,34 @@ bot.on('polling_error', (error) => {
 
 app.use(express.static('.'));
 
-// --- USER DATABASE STORAGE (LOCAL BALANCE TRACKER) ---
+// --- USER DATABASE STORAGE (LOCAL) ---
 const users = {};
 
-// Helper function to get or initialize user balance
-function getUserBalance(chatId) {
-    if (users[chatId] === undefined) {
-        users[chatId] = { balance: 0.00 }; // Default starting balance
-    }
-    return users[chatId].balance;
-}
-
-// Helper function to generate caption with live balance tracker
-function getWelcomeCaption(chatId) {
-    const bal = getUserBalance(chatId);
-    return `Welcome to Addis Bingo! Choose an option below:\n\n💰 *Live Balance:* \`${bal.toFixed(2)} ETB\``;
-}
-
-// --- TELEGRAM BOT /start HANDLER ---
+// --- TELEGRAM BOT HANDLERS (EXACT USER CODE) ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    const photoUrl = "https://i.ibb.co/3sS8M3f/addis-bingo.jpg";
-
-    bot.sendPhoto(chatId, photoUrl, {
-        caption: getWelcomeCaption(chatId),
-        parse_mode: "Markdown",
+    
+    // Welcome image and exact original button grid
+    bot.sendPhoto(chatId, "https://i.ibb.co/3sS8M3f/addis-bingo.jpg", {
+        caption: "Welcome to Addis Bingo! Choose an option below:",
         reply_markup: {
             keyboard: [
-                [
-                    { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
-                    { text: "Play Spin 🎰" }
-                ],
-                [
-                    { text: "Register 📝" }, 
-                    { text: "Deposit 💵" }
-                ],
-                [
-                    { text: "Check Balance 💰" }, 
-                    { text: "Contact Support 📞" }
-                ],
-                [
-                    { text: "Instruction 📖" }, 
-                    { text: "Invite ✉️" }
-                ]
+                [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
+                [{ text: "Register 📝" }, { text: "Deposit 💵" }],
+                [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
+                [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
             ],
             resize_keyboard: true
         }
     }).catch(() => {
-        // Fallback text if image fails
-        bot.sendMessage(chatId, getWelcomeCaption(chatId), {
-            parse_mode: "Markdown",
+        // Fallback message if image URL fails
+        bot.sendMessage(chatId, "Welcome to Addis Bingo! Choose an option below:", {
             reply_markup: {
                 keyboard: [
-                    [
-                        { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
-                        { text: "Play Spin 🎰" }
-                    ],
-                    [
-                        { text: "Register 📝" }, 
-                        { text: "Deposit 💵" }
-                    ],
-                    [
-                        { text: "Check Balance 💰" }, 
-                        { text: "Contact Support 📞" }
-                    ],
-                    [
-                        { text: "Instruction 📖" }, 
-                        { text: "Invite ✉️" }
-                    ]
+                    [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
+                    [{ text: "Register 📝" }, { text: "Deposit 💵" }],
+                    [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
+                    [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
                 ],
                 resize_keyboard: true
             }
@@ -103,31 +63,23 @@ bot.onText(/\/start/, (msg) => {
     });
 });
 
-// --- TEXT BUTTON & BALANCE HANDLERS ---
+// Text buttons matching exact layout
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
-    if (!text || text.startsWith('/')) return;
-
-    if (text === "Check Balance 💰" || text === "💰 Check Balance") {
-        const bal = getUserBalance(chatId);
-        bot.sendMessage(chatId, `💰 *Live Balance Tracker*\n\nYour current wallet balance is: \`${bal.toFixed(2)} ETB\``, { parse_mode: "Markdown" });
-    } else if (text === "Deposit 💵") {
+    if (text === "Deposit 💵" || text === "💰 Deposit") {
         bot.sendMessage(chatId, 
             "💰 *Telebirr Deposit Instructions*\n\n" +
             "Transfer funds via Telebirr to:\n" +
             "📱 *Number:* `0900071279`\n" +
             "👤 *Account Name:* robel\n\n" +
-            "Your balance will automatically update here upon admin approval.", { parse_mode: "Markdown" });
+            "Your balance will be updated after verification.", { parse_mode: "Markdown" });
+    } else if (text === "Check Balance 💰" || text === "📊 Check Balance") {
+        const bal = users[chatId]?.balance || 0.38;
+        bot.sendMessage(chatId, `📊 Your current wallet balance is: ${bal.toFixed(2)} ETB`);
     } else if (text === "Register 📝") {
-        bot.sendMessage(chatId, "⚠️ You are already registered!");
-    } else if (text === "Instruction 📖") {
-        bot.sendMessage(chatId, "📖 Select cards, place your bet, and mark off numbers as they are called to complete lines!");
-    } else if (text === "Invite ✉️") {
-        bot.sendMessage(chatId, `✉️ Share your referral link with friends:\nhttps://t.me/AddisBingoBot?start=${chatId}`);
-    } else if (text === "Contact Support 📞") {
-        bot.sendMessage(chatId, "📞 For support, please reach out to: @your_support_username");
+        bot.sendMessage(chatId, "Please use the /register command or share your contact number to register.");
     }
 });
 
