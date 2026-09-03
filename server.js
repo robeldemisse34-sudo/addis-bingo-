@@ -31,13 +31,14 @@ app.use(express.static('.'));
 // --- USER DATABASE STORAGE (LOCAL) ---
 const users = {};
 
-// --- TELEGRAM BOT HANDLERS (EXACT USER CODE) ---
+// --- TELEGRAM BOT HANDLERS ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     
-    // Welcome image and exact original button grid
-    bot.sendPhoto(chatId, "https://i.ibb.co/3sS8M3f/addis-bingo.jpg", {
-        caption: "Welcome to Addis Bingo! Choose an option below:",
+    // Direct raw link to the welcome banner image hosted in your GitHub repo
+    const photoUrl = "https://raw.githubusercontent.com/robeldemisse34-sudo/addis-bingo/main/welcome.jpg";
+
+    const keyboardOptions = {
         reply_markup: {
             keyboard: [
                 [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
@@ -47,19 +48,14 @@ bot.onText(/\/start/, (msg) => {
             ],
             resize_keyboard: true
         }
+    };
+
+    bot.sendPhoto(chatId, photoUrl, {
+        caption: "Welcome to Addis Bingo! Choose an option below:",
+        ...keyboardOptions
     }).catch(() => {
-        // Fallback message if image URL fails
-        bot.sendMessage(chatId, "Welcome to Addis Bingo! Choose an option below:", {
-            reply_markup: {
-                keyboard: [
-                    [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
-                    [{ text: "Register 📝" }, { text: "Deposit 💵" }],
-                    [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
-                    [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
-                ],
-                resize_keyboard: true
-            }
-        });
+        // Fallback if photo url fails
+        bot.sendMessage(chatId, "Welcome to Addis Bingo! Choose an option below:", keyboardOptions);
     });
 });
 
@@ -67,6 +63,8 @@ bot.onText(/\/start/, (msg) => {
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
+
+    if (!text || text.startsWith('/')) return;
 
     if (text === "Deposit 💵" || text === "💰 Deposit") {
         bot.sendMessage(chatId, 
