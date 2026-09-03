@@ -11,7 +11,7 @@ const io = new Server(server, {
 
 const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAGWUEzt7q70yRm2BgldnNiBTRmfz6Anhys";
 
-// Prevent 409 Conflict crashes on Render redeploys
+// Error-handled bot instance to prevent 409 conflict crashes
 const bot = new TelegramBot(token, { 
     polling: {
         autoStart: true,
@@ -21,43 +21,81 @@ const bot = new TelegramBot(token, {
 
 bot.on('polling_error', (error) => {
     if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
-        return; // Ignore temporary deploy overlaps cleanly
+        return; // Ignore temporary deploy transitions on Render
     }
     console.error('Polling error:', error);
 });
 
 app.use(express.static('.'));
 
-// Local user state storage
+// --- USER DATABASE STORAGE (LOCAL BALANCE TRACKER) ---
 const users = {};
+
+// Helper function to get or initialize user balance
+function getUserBalance(chatId) {
+    if (users[chatId] === undefined) {
+        users[chatId] = { balance: 0.00 }; // Default starting balance
+    }
+    return users[chatId].balance;
+}
+
+// Helper function to generate caption with live balance tracker
+function getWelcomeCaption(chatId) {
+    const bal = getUserBalance(chatId);
+    return `Welcome to Addis Bingo! Choose an option below:\n\n💰 *Live Balance:* \`${bal.toFixed(2)} ETB\``;
+}
 
 // --- TELEGRAM BOT /start HANDLER ---
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    
-    // Direct web link to the exact ADDIS BINGO logo card image
     const photoUrl = "https://i.ibb.co/3sS8M3f/addis-bingo.jpg";
 
     bot.sendPhoto(chatId, photoUrl, {
-        caption: "Welcome to Addis Bingo! Choose an option below:",
+        caption: getWelcomeCaption(chatId),
+        parse_mode: "Markdown",
         reply_markup: {
             keyboard: [
-                [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
-                [{ text: "Register 📝" }, { text: "Deposit 💵" }],
-                [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
-                [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
+                [
+                    { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
+                    { text: "Play Spin 🎰" }
+                ],
+                [
+                    { text: "Register 📝" }, 
+                    { text: "Deposit 💵" }
+                ],
+                [
+                    { text: "Check Balance 💰" }, 
+                    { text: "Contact Support 📞" }
+                ],
+                [
+                    { text: "Instruction 📖" }, 
+                    { text: "Invite ✉️" }
+                ]
             ],
             resize_keyboard: true
         }
     }).catch(() => {
-        // Fallback text if network drops image fetching
-        bot.sendMessage(chatId, "Welcome to Addis Bingo! Choose an option below:", {
+        // Fallback text if image fails
+        bot.sendMessage(chatId, getWelcomeCaption(chatId), {
+            parse_mode: "Markdown",
             reply_markup: {
                 keyboard: [
-                    [{ text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, { text: "Play Spin 🎰" }],
-                    [{ text: "Register 📝" }, { text: "Deposit 💵" }],
-                    [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
-                    [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
+                    [
+                        { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
+                        { text: "Play Spin 🎰" }
+                    ],
+                    [
+                        { text: "Register 📝" }, 
+                        { text: "Deposit 💵" }
+                    ],
+                    [
+                        { text: "Check Balance 💰" }, 
+                        { text: "Contact Support 📞" }
+                    ],
+                    [
+                        { text: "Instruction 📖" }, 
+                        { text: "Invite ✉️" }
+                    ]
                 ],
                 resize_keyboard: true
             }
@@ -65,29 +103,35 @@ bot.onText(/\/start/, (msg) => {
     });
 });
 
-// --- TEXT BUTTON HANDLERS ---
+// --- TEXT BUTTON & BALANCE HANDLERS ---
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
     if (!text || text.startsWith('/')) return;
 
-    if (text === "Deposit 💵" || text === "💰 Deposit") {
+    if (text === "Check Balance 💰" || text === "💰 Check Balance") {
+        const bal = getUserBalance(chatId);
+        bot.sendMessage(chatId, `💰 *Live Balance Tracker*\n\nYour current wallet balance is: \`${bal.toFixed(2)} ETB\``, { parse_mode: "Markdown" });
+    } else if (text === "Deposit 💵") {
         bot.sendMessage(chatId, 
             "💰 *Telebirr Deposit Instructions*\n\n" +
             "Transfer funds via Telebirr to:\n" +
             "📱 *Number:* `0900071279`\n" +
             "👤 *Account Name:* robel\n\n" +
-            "Your balance will be updated after verification.", { parse_mode: "Markdown" });
-    } else if (text === "Check Balance 💰" || text === "📊 Check Balance") {
-        const bal = users[chatId]?.balance || 0.38;
-        bot.sendMessage(chatId, `📊 Your current wallet balance is: ${bal.toFixed(2)} ETB`);
+            "Your balance will automatically update here upon admin approval.", { parse_mode: "Markdown" });
     } else if (text === "Register 📝") {
         bot.sendMessage(chatId, "⚠️ You are already registered!");
+    } else if (text === "Instruction 📖") {
+        bot.sendMessage(chatId, "📖 Select cards, place your bet, and mark off numbers as they are called to complete lines!");
+    } else if (text === "Invite ✉️") {
+        bot.sendMessage(chatId, `✉️ Share your referral link with friends:\nhttps://t.me/AddisBingoBot?start=${chatId}`);
+    } else if (text === "Contact Support 📞") {
+        bot.sendMessage(chatId, "📞 For support, please reach out to: @your_support_username");
     }
 });
 
-// --- MULTIPLAYER WEBSOCKET ENGINE ---
+// --- WEBSOCKET MULTIPLAYER GAME ENGINE ---
 const MIN_CARDS = 3;
 const MAX_CARDS = 100;
 
