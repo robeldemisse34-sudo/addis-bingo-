@@ -5,46 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Addis Bingo</title>
   <link rel="stylesheet" href="style.css">
+  
+  <!-- Telegram & Firebase Libraries -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
   <style>
-    /* In-App Notification Banner Styling */
+    /* In-App Toast Notification Banner */
     .toast-banner {
-      position: fixed;
-      top: -60px;
-      left: 50%;
-      transform: translateX(-50%);
-      background-color: #ef4444;
-      color: #ffffff;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: bold;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      transition: top 0.3s ease-in-out;
-      z-index: 1000;
-      white-space: nowrap;
+      position: fixed; top: -60px; left: 50%; transform: translateX(-50%);
+      background-color: #ef4444; color: #fff; padding: 10px 20px;
+      border-radius: 8px; font-weight: bold; font-size: 14px;
+      transition: top 0.3s ease; z-index: 1000; white-space: nowrap;
     }
-    .toast-banner.show {
-      top: 15px;
+    .toast-banner.show { top: 15px; }
+
+    /* 30-Second Countdown Banner */
+    .timer-banner {
+      display: none; background-color: #2563eb; color: #fff;
+      text-align: center; padding: 8px; margin: 10px 0; border-radius: 6px;
+      font-weight: bold; font-size: 14px;
     }
 
-    /* Countdown Bar Below Stats */
-    .timer-banner {
-      display: none;
-      background-color: #2563eb;
-      color: #ffffff;
-      text-align: center;
-      padding: 8px;
-      margin: 10px 0;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: bold;
+    /* Reserved Cell Styling */
+    .selector-cell.occupied {
+      background-color: #f97316 !important;
+      color: #fff;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
 
-  <!-- Toast Notification -->
-  <div id="toastBanner" class="toast-banner">Please wait until the current game has ended.</div>
+  <!-- Toast Notification Banner -->
+  <div id="toastBanner" class="toast-banner"></div>
 
   <div class="game-container">
     
@@ -52,7 +47,7 @@
     <div class="stats-bar">
       <div class="stat-box">
         <span class="stat-title">Wallet</span>
-        <span class="stat-value" id="walletBalance">0.00</span>
+        <span class="stat-value" id="walletBalance">100.00</span>
       </div>
       <div class="stat-box">
         <span class="stat-title">Bonus</span>
@@ -89,41 +84,62 @@
   </div>
 
   <script>
+    // Your exact Firebase configuration keys
+    const firebaseConfig = {
+      apiKey: "AIzaSyCSPvq-XVlhjufHT-MHhjrirTk0W3d-nTg",
+      authDomain: "addis-bingo-149fc.firebaseapp.com",
+      databaseURL: "https://addis-bingo-149fc-default-rtdb.firebaseio.com",
+      projectId: "addis-bingo-149fc",
+      storageBucket: "addis-bingo-149fc.firebasestorage.app",
+      messagingSenderId: "263720616222",
+      appId: "1:263720616222:web:493bd0e0c08a22f2afc90f",
+      measurementId: "G-QMN2VY8FRS"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Telegram User ID Integration
+    const tg = window.Telegram?.WebApp;
+    if (tg) tg.ready();
+    const currentUserId = tg?.initDataUnsafe?.user?.id 
+      ? String(tg.initDataUnsafe.user.id) 
+      : "user_" + Math.floor(Math.random() * 10000);
+
+    function showToast(msg) {
+      const toast = document.getElementById("toastBanner");
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 3000);
+    }
+
     function initGame() {
       const grid = document.getElementById("cardSelectorGrid");
       const preview = document.getElementById("bingoCardPreview");
-      const refreshBtn = document.getElementById("refreshBtn");
       const startBtn = document.getElementById("startBtn");
+      const refreshBtn = document.getElementById("refreshBtn");
       const activeGamesDisplay = document.getElementById("activeGames");
-      const toastBanner = document.getElementById("toastBanner");
       const timerBanner = document.getElementById("timerBanner");
       const countdownDisplay = document.getElementById("countdown");
 
       let selectedCardIndex = 1;
-      let reservedCardsCount = 0;
-      let activeGamesCount = 0;
-      let isCountdownRunning = false;
-      let countdownTimer = null;
+      let currentReservations = {};
+      let activeGames = 0;
 
-      // Custom toast banner function replacing ugly alert()
-      function showToast(message) {
-        toastBanner.textContent = message;
-        toastBanner.classList.add("show");
-        setTimeout(() => {
-          toastBanner.classList.remove("show");
-        }, 3000);
-      }
-
-      // 1. Generate 100 selector cells
+      // 1. Selector Grid Rendering
       function renderGrid() {
         if (!grid) return;
         grid.innerHTML = "";
+        const reservedIndices = Object.values(currentReservations).map(r => r.cardIndex);
+
         for (let i = 1; i <= 100; i++) {
           const cell = document.createElement("div");
           cell.className = "selector-cell";
           cell.textContent = i;
+
           if (i === selectedCardIndex) cell.classList.add("selected");
-          
+          if (reservedIndices.includes(i)) cell.classList.add("occupied");
+
           cell.addEventListener("click", () => {
             document.querySelectorAll(".selector-cell").forEach(c => c.classList.remove("selected"));
             cell.classList.add("selected");
@@ -134,7 +150,6 @@
         }
       }
 
-      // Helper to generate unique random numbers within a range
       function getRandomNumbers(min, max, count) {
         const nums = [];
         while (nums.length < count) {
@@ -144,25 +159,21 @@
         return nums;
       }
 
-      // 2. Generate 5x5 Bingo Card by Column (B-I-N-G-O)
+      // 2. 5x5 Bingo Preview Card (B-I-N-G-O Columns)
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
+        const colB = getRandomNumbers(1, 15, 5);
+        const colI = getRandomNumbers(16, 30, 5);
+        const colN = getRandomNumbers(31, 45, 5);
+        const colG = getRandomNumbers(46, 60, 5);
+        const colO = getRandomNumbers(61, 75, 5);
 
-        const colB = getRandomNumbers(1, 15, 5);   // 1-15
-        const colI = getRandomNumbers(16, 30, 5);  // 16-30
-        const colN = getRandomNumbers(31, 45, 5);  // 31-45
-        const colG = getRandomNumbers(46, 60, 5);  // 46-60
-        const colO = getRandomNumbers(61, 75, 5);  // 61-75
-
-        for (let row = 0; row < 5; row++) {
-          const rowNumbers = [colB[row], colI[row], colN[row], colG[row], colO[row]];
-          
-          rowNumbers.forEach((num, col) => {
+        for (let r = 0; r < 5; r++) {
+          [colB[r], colI[r], colN[r], colG[r], colO[r]].forEach((num, c) => {
             const cell = document.createElement("div");
             cell.className = "bingo-cell";
-            
-            if (row === 2 && col === 2) {
+            if (r === 2 && c === 2) {
               cell.textContent = "FREE";
               cell.classList.add("daubed");
             } else {
@@ -173,59 +184,80 @@
         }
       }
 
-      // 3. Start 30-Second Countdown when 2 cards are reserved
-      function startCountdown() {
-        isCountdownRunning = true;
-        let secondsLeft = 30;
-        countdownDisplay.textContent = secondsLeft;
-        timerBanner.style.display = "block";
+      // 3. Card Reservation with Balance & Single-Card Enforcers
+      if (startBtn) {
+        startBtn.addEventListener("click", () => {
+          const wallet = parseFloat(document.getElementById("walletBalance").textContent);
+          const stake = parseFloat(document.getElementById("stakeAmount").textContent);
 
-        countdownTimer = setInterval(() => {
+          if (activeGames >= 1) {
+            return showToast("Please wait until the current game ends.");
+          }
+          if (wallet < stake) {
+            return showToast("Insufficient balance to reserve a card.");
+          }
+          if (currentReservations[currentUserId]) {
+            return showToast("You have already reserved a card for this round!");
+          }
+
+          // Save reservation to Firebase
+          db.ref("reservations/" + currentUserId).set({
+            cardIndex: selectedCardIndex,
+            timestamp: Date.now()
+          });
+        });
+      }
+
+      // 4. Real-Time Firebase Database Listeners
+      db.ref("reservations").on("value", (snapshot) => {
+        currentReservations = snapshot.val() || {};
+        const playerKeys = Object.keys(currentReservations);
+        const count = playerKeys.length;
+
+        renderGrid();
+
+        if (count === 1) {
+          showToast("Card reserved! (1/2 players ready)");
+        } else if (count === 2) {
+          startCountdown();
+        }
+      });
+
+      db.ref("activeGames").on("value", (snapshot) => {
+        activeGames = snapshot.val() || 0;
+        if (activeGamesDisplay) activeGamesDisplay.textContent = activeGames;
+      });
+
+      // 5. Global 30-Second Countdown Logic
+      let isTimerRunning = false;
+      function startCountdown() {
+        if (isTimerRunning) return;
+        isTimerRunning = true;
+
+        let secondsLeft = 30;
+        if (timerBanner) timerBanner.style.display = "block";
+        if (countdownDisplay) countdownDisplay.textContent = secondsLeft;
+
+        const timer = setInterval(() => {
           secondsLeft--;
-          countdownDisplay.textContent = secondsLeft;
+          if (countdownDisplay) countdownDisplay.textContent = secondsLeft;
 
           if (secondsLeft <= 0) {
-            clearInterval(countdownTimer);
-            timerBanner.style.display = "none";
-            isCountdownRunning = false;
-            
-            // Start Active Game
-            activeGamesCount = 1;
-            activeGamesDisplay.textContent = activeGamesCount;
-            reservedCardsCount = 0;
-            showToast("Game Has Started!");
+            clearInterval(timer);
+            if (timerBanner) timerBanner.style.display = "none";
+            isTimerRunning = false;
+
+            // Reset lobby & start game state in database
+            db.ref("activeGames").set(1);
+            db.ref("reservations").remove();
+            showToast("Game Started!");
           }
         }, 1000);
       }
 
-      // 4. Handle Card Reservations & Game Launch
-      if (startBtn) {
-        startBtn.addEventListener("click", () => {
-          // If a game is active or countdown is already running
-          if (activeGamesCount >= 1 || isCountdownRunning) {
-            showToast("Please wait until the current game ends.");
-            return;
-          }
-
-          if (reservedCardsCount < 2) {
-            reservedCardsCount++;
-            
-            if (reservedCardsCount === 1) {
-              showToast(`Card #${selectedCardIndex} reserved! Waiting for player 2...`);
-            } else if (reservedCardsCount === 2) {
-              showToast("2 Cards Reserved! Timer starting...");
-              startCountdown();
-            }
-          }
-        });
-      }
-
       renderGrid();
       generatePreviewCard();
-
-      if (refreshBtn) {
-        refreshBtn.addEventListener("click", generatePreviewCard);
-      }
+      if (refreshBtn) refreshBtn.addEventListener("click", generatePreviewCard);
     }
 
     if (document.readyState === "loading") {
