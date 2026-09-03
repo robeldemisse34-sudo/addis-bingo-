@@ -9,9 +9,9 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-const token = process.env.TELEGRAM_BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
+const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
 
-// Bot instance with polling error handling
 const bot = new TelegramBot(token, {
   polling: {
     autoStart: true,
@@ -21,7 +21,7 @@ const bot = new TelegramBot(token, {
 
 bot.on('polling_error', (error) => {
   if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
-    return; // Ignore temporary deploy transitions
+    return;
   }
   console.error('Polling error:', error);
 });
@@ -29,11 +29,10 @@ bot.on('polling_error', (error) => {
 app.use(express.static('.'));
 app.use(express.json());
 
-// In-memory user state storage
 const userStates = {};
 const userBalances = {};
+const processedTransactions = new Set();
 
-// Keyboard Layouts
 const mainKeyboard = {
   reply_markup: {
     keyboard: [
@@ -46,7 +45,6 @@ const mainKeyboard = {
   }
 };
 
-// /start command handler
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   const firstName = msg.from.first_name || "Player";
@@ -62,43 +60,49 @@ bot.onText(/\/start/, (msg) => {
   bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
 });
 
-// Incoming message router
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
+  const text = msg.text ? msg.text.trim() : '';
 
-  if (!text || text.startsWith('/')) return;
+  if (text.startsWith('/')) return;
 
-  // Handle active deposit flow steps
   if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
       return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., 100):");
     }
     userStates[chatId] = { step: 'AWAITING_PROOF', amount: amount };
-    return bot.sendMessage(chatId, `💵 Deposit Amount: ${amount} ETB\n\nPlease send your transaction ID or a screenshot of your payment receipt:`);
+    return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send your Telebirr Transaction ID (e.g. \`DI38EQPZ4Y\`) or a screenshot of your receipt:`, { parse_mode: 'Markdown' });
   }
 
-  if (userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') {
-    const depositAmount = userStates[chatId].amount;
+  if ((userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') || (msg.photo && userStates[chatId])) {
+    const depositAmount = userStates[chatId].amount || "Unspecified";
+    const txId = text.toUpperCase();
+
+    if (txId && processedTransactions.has(txId)) {
+      return bot.sendMessage(chatId, "⚠️ This Telebirr Transaction ID has already been submitted and processed!");
+    }
+
+    if (txId && txId.length >= 6) {
+      processedTransactions.add(txId);
+    }
+
     delete userStates[chatId];
 
-    // Notify user
-    bot.sendMessage(chatId, "✅ Your deposit receipt has been submitted for review! You will be notified once approved.", mainKeyboard);
+    bot.sendMessage(chatId, "⏳ Your Telebirr transaction verification request has been sent to Admin! You will be notified instantly once approved.", mainKeyboard);
 
-    // Notify Admin
-    const adminMsg = `🚨 *New Deposit Request*\n\n` +
-      `👤 User: ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
-      `🆔 User ID: \`${chatId}\`\n` +
-      `💵 Amount: *${depositAmount} ETB*\n` +
-      `📄 Ref/Details: ${text || 'Photo Receipt Submitted'}`;
+    const adminMsg = `🚨 *NEW TELEBIRR DEPOSIT REQUEST*\n\n` +
+      `👤 *User:* ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
+      `🆔 *User ID:* \`${chatId}\`\n` +
+      `💵 *Amount Requested:* *${depositAmount} ETB*\n` +
+      `📄 *Tx ID / Details:* \`${text || 'Screenshot Attached'}\``;
 
-    const approveOptions = {
+    const adminButtons = {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Approve", callback_data: `approve_${chatId}_${depositAmount}` },
+            { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_${txId || 'NONE'}` },
             { text: "❌ Reject", callback_data: `reject_${chatId}` }
           ]
         ]
@@ -107,13 +111,12 @@ bot.on('message', (msg) => {
 
     if (msg.photo) {
       const photoId = msg.photo[msg.photo.length - 1].file_id;
-      return bot.sendPhoto(ADMIN_CHAT_ID, photoId, { caption: adminMsg, ...approveOptions });
+      return bot.sendPhoto(ADMIN_CHAT_ID, photoId, { caption: adminMsg, ...adminButtons });
     } else {
-      return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, approveOptions);
+      return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
     }
   }
 
-  // Handle main keyboard options
   switch (text) {
     case "Deposit 💵":
       userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
@@ -126,19 +129,19 @@ bot.on('message', (msg) => {
       break;
 
     case "Register 📝":
-      bot.sendMessage(chatId, "✅ You are already registered and ready to play!");
+      bot.sendMessage(chatId, "✅ You are registered and ready to play!");
       break;
 
     case "Contact Support 📞":
-      bot.sendMessage(chatId, "📞 For support, please contact @AddisBingoSupport");
+      bot.sendMessage(chatId, "📞 For support, contact @AddisBingoSupport");
       break;
 
     case "Instruction 📖":
-      bot.sendMessage(chatId, "📖 Select a game (Bingo or Spin) from the menu, deposit funds, and start playing instantly!");
+      bot.sendMessage(chatId, "📖 Select Bingo or Spin, deposit funds via Telebirr, and start playing!");
       break;
 
     case "Invite ✉️":
-      bot.sendMessage(chatId, `✉️ Invite your friends using your link:\nhttps://t.me/Adissbingoobot?start=${chatId}`);
+      bot.sendMessage(chatId, `✉️ Referral link:\nhttps://t.me/Adissbingoobot?start=${chatId}`);
       break;
 
     case "Play Bingo 🎰":
@@ -147,31 +150,46 @@ bot.on('message', (msg) => {
       break;
 
     default:
+      if (userStates[chatId]) return;
       bot.sendMessage(chatId, "Please select an option from the menu below:", mainKeyboard);
       break;
   }
 });
 
-// Admin callback query handler (Approve / Reject)
 bot.on('callback_query', (query) => {
   const data = query.data;
   const queryId = query.id;
+  const fromAdminId = query.from.id.toString();
+
+  if (fromAdminId !== ADMIN_CHAT_ID) {
+    return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized! Only the main Admin can approve transactions.", show_alert: true });
+  }
 
   if (data.startsWith('approve_')) {
-    const [, targetUserId, amountStr] = data.split('_');
-    const amount = parseFloat(amountStr);
+    const [, targetUserId, amountStr, txId] = data.split('_');
+    const amount = parseFloat(amountStr) || 0;
 
     userBalances[targetUserId] = (userBalances[targetUserId] || 0) + amount;
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
-    bot.sendMessage(ADMIN_CHAT_ID, `✅ Approved ${amount} ETB deposit for user ${targetUserId}`);
-    bot.sendMessage(targetUserId, `🎉 Your deposit of *${amount} ETB* has been approved!\n💰 New Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
+    bot.editMessageText(`✅ *APPROVED*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\` (Tx: ${txId})`, {
+      chat_id: ADMIN_CHAT_ID,
+      message_id: query.message.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('reject_')) {
     const [, targetUserId] = data.split('_');
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
-    bot.sendMessage(ADMIN_CHAT_ID, `❌ Rejected deposit for user ${targetUserId}`);
-    bot.sendMessage(targetUserId, "❌ Your deposit request was rejected. Please contact support if you think this is an error.");
+    bot.editMessageText(`❌ *REJECTED*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
+      chat_id: ADMIN_CHAT_ID,
+      message_id: query.message.message_id,
+      parse_mode: 'Markdown'
+    });
+
+    bot.sendMessage(targetUserId, "❌ Your deposit request was rejected. If you believe this is an error, please reach out to Support.");
   }
 });
 
