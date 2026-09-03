@@ -1,118 +1,79 @@
-let selectedCharAt = 1;
-const cardDataStore = {};
+document.addEventListener("DOMContentLoaded", () => {
+  const grid = document.getElementById("cardSelectorGrid");
+  const preview = document.getElementById("bingoCardPreview");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const startBtn = document.getElementById("startBtn");
 
-async function fetchUserWallet() {
-    try {
-        const telegramId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || "default_user";
-        const response = await fetch(`/api/user?telegramId=${telegramId}`);
-        const data = await response.json();
-        if (data.balance !== undefined) {
-            document.getElementById('walletBalance').innerText = data.balance.toFixed(2);
-        }
-    } catch (error) {
-        console.error("Failed to load live wallet balance:", error);
-    }
-}
+  // State
+  let selectedCardIndex = 1;
 
-function generateCardSelector() {
-    const grid = document.getElementById('cardSelectorGrid');
-    grid.innerHTML = '';
-    
+  // 1. Generate 100 selector cells
+  function render100Grid() {
+    if (!grid) return;
+    grid.innerHTML = "";
+
     for (let i = 1; i <= 100; i++) {
-        const cell = document.createElement('div');
-        cell.classList.add('selector-cell');
-        cell.innerText = i;
-        if (i === selectedCharAt) cell.classList.add('selected');
+      const cell = document.createElement("div");
+      cell.className = "selector-cell";
+      cell.textContent = i;
 
-        cell.addEventListener('click', () => {
-            document.querySelectorAll('.selector-cell').forEach(c => c.classList.remove('selected'));
-            cell.classList.add('selected');
-            selectedCharAt = i;
-            loadCardNumbers(i);
-        });
+      if (i === selectedCardIndex) {
+        cell.classList.add("selected");
+      }
 
-        grid.appendChild(cell);
+      cell.addEventListener("click", () => {
+        document.querySelectorAll(".selector-cell").forEach(c => c.classList.remove("selected"));
+        cell.classList.add("selected");
+        selectedCardIndex = i;
+        generatePreviewCard();
+      });
+
+      grid.appendChild(cell);
     }
-    loadCardNumbers(selectedCharAt);
-}
+  }
 
-function getUniqueRandomNumbers(min, max, count) {
-    let arr = [];
-    while(arr.length < count) {
-        let r = Math.floor(Math.random() * (max - min + 1)) + min;
-        if(arr.indexOf(r) === -1) arr.push(r);
-    }
-    return arr;
-}
+  // 2. Generate 5x5 Bingo Preview Card
+  function generatePreviewCard() {
+    if (!preview) return;
+    preview.innerHTML = "";
 
-function loadCardNumbers(cardId) {
-    const cardContainer = document.getElementById('bingoCard');
-    cardContainer.innerHTML = '';
-
-    if (!cardDataStore[cardId]) {
-        let colB = getUniqueRandomNumbers(1, 15, 5);
-        let colI = getUniqueRandomNumbers(16, 30, 5);
-        let colN = getUniqueRandomNumbers(31, 45, 4);
-        let colG = getUniqueRandomNumbers(46, 60, 5);
-        let colO = getUniqueRandomNumbers(61, 75, 5);
-
-        colN.splice(2, 0, "FREE");
-
-        let gridNumbers = [];
-        for (let row = 0; row < 5; row++) {
-            gridNumbers.push(colB[row]);
-            gridNumbers.push(colI[row]);
-            gridNumbers.push(colN[row]);
-            gridNumbers.push(colG[row]);
-            gridNumbers.push(colO[row]);
-        }
-
-        cardDataStore[cardId] = gridNumbers;
+    // Pseudo-random numbers seeded by selected card index for unique card previews
+    const numbers = [];
+    while (numbers.length < 25) {
+      const rand = Math.floor(Math.random() * 75) + 1;
+      if (!numbers.includes(rand)) numbers.push(rand);
     }
 
-    let currentCardNumbers = cardDataStore[cardId];
+    numbers.forEach((num, index) => {
+      const cell = document.createElement("div");
+      cell.className = "bingo-cell";
+      
+      // Middle cell is FREE
+      if (index === 12) {
+        cell.textContent = "FREE";
+        cell.classList.add("daubed");
+      } else {
+        cell.textContent = num;
+      }
 
-    currentCardNumbers.forEach((num, index) => {
-        const cell = document.createElement('div');
-        cell.classList.add('bingo-cell');
-        cell.innerText = num;
-
-        if (num === "FREE") {
-            cell.classList.add('daubed');
-        }
-
-        cell.addEventListener('click', () => {
-            if (num !== "FREE") {
-                cell.classList.toggle('daubed');
-            }
-        });
-
-        cardContainer.appendChild(cell);
+      preview.appendChild(cell);
     });
-}
+  }
 
-function randomizeSelectedCard() {
-    delete cardDataStore[selectedCharAt];
-    loadCardNumbers(selectedCharAt);
-}
+  // 3. Event Listeners
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      generatePreviewCard();
+    });
+  }
 
-function startGame() {
-    alert(`Game started with Card #${selectedCharAt}!`);
-}
+  if (startBtn) {
+    startBtn.addEventListener("click", () => {
+      alert(`Starting game with Card #${selectedCardIndex}!`);
+    });
+  }
 
-// Deposit Modal Functions
-function openDepositModal() {
-    document.getElementById('depositModal').style.display = 'flex';
-}
-
-function closeDepositModal() {
-    document.getElementById('depositModal').style.display = 'none';
-}
-
-window.onload = () => {
-    if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.ready();
-    }
-    fetchUserWallet();
-    generateCardSelector();
-};
+  // Initialize UI
+  render100Grid();
+  generatePreviewCard();
+});
