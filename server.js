@@ -6,379 +6,177 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*" }
+  cors: { origin: "*" }
 });
 
 const token = process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_u0m3z0a0";
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "7936173420";
 
-
-// Error-handled bot instance to prevent 409 conflict crashes
-const bot = new TelegramBot(token, { 
-    polling: {
-        autoStart: true,
-        params: { timeout: 10 }
-    }
+// Bot instance with polling error handling
+const bot = new TelegramBot(token, {
+  polling: {
+    autoStart: true,
+    params: { timeout: 10 }
+  }
 });
 
 bot.on('polling_error', (error) => {
-    if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
-        return; // Ignore temporary deploy transitions on Render
-    }
-    console.error('Polling error:', error);
+  if (error.code === 'ETELEGRAM' && error.message.includes('409 Conflict')) {
+    return; // Ignore temporary deploy transitions
+  }
+  console.error('Polling error:', error);
 });
 
 app.use(express.static('.'));
+app.use(express.json());
 
-// --- ADMIN & STORAGE CONFIGURATION ---
-const ADMIN_CHAT_ID = 123456789; // Replace with your numeric Telegram User ID from @userinfobot
+// In-memory user state storage
+const userStates = {};
+const userBalances = {};
 
-const users = {};
-const userDepositState = {};
-const pendingDeposits = {};
-
-function getUserBalance(chatId) {
-    if (users[chatId] === undefined) {
-        users[chatId] = { balance: 0.00 };
-    }
-    return users[chatId].balance;
-}
-
-function getWelcomeCaption(chatId) {
-    const bal = getUserBalance(chatId);
-    return `Welcome to Addis Bingo! Choose an option below:\n\n💰 *Live Balance:* \`${bal.toFixed(2)} ETB\``;
-}
-
-function resetDepositState(chatId) {
-    delete userDepositState[chatId];
-}
-
-// --- TELEGRAM BOT /start HANDLER (CHANNEL CHECK REMOVED) ---
-bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    const photoUrl = "https://i.ibb.co/3sS8M3f/addis-bingo.jpg";
-
-    bot.sendPhoto(chatId, photoUrl, {
-        caption: getWelcomeCaption(chatId),
-        parse_mode: "Markdown",
-        reply_markup: {
-            keyboard: [
-                [
-                    { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
-                    { text: "Play Spin 🎰" }
-                ],
-                [
-                    { text: "Register 📝" }, 
-                    { text: "Deposit 💵" }
-                ],
-                [
-                    { text: "Check Balance 💰" }, 
-                    { text: "Contact Support 📞" }
-                ],
-                [
-                    { text: "Instruction 📖" }, 
-                    { text: "Invite ✉️" }
-                ]
-            ],
-            resize_keyboard: true
-        }
-    }).catch(() => {
-        bot.sendMessage(chatId, getWelcomeCaption(chatId), {
-            parse_mode: "Markdown",
-            reply_markup: {
-                keyboard: [
-                    [
-                        { text: "Play Bingo 🎮", web_app: { url: "https://addis-bingo-green.vercel.app" } }, 
-                        { text: "Play Spin 🎰" }
-                    ],
-                    [
-                        { text: "Register 📝" }, 
-                        { text: "Deposit 💵" }
-                    ],
-                    [
-                        { text: "Check Balance 💰" }, 
-                        { text: "Contact Support 📞" }
-                    ],
-                    [
-                        { text: "Instruction 📖" }, 
-                        { text: "Invite ✉️" }
-                    ]
-                ],
-                resize_keyboard: true
-            }
-        });
-    });
-});
-
-// --- MESSAGE HANDLERS (NAVIGATION & TWO-STEP DEPOSIT) ---
-bot.on('message', (msg) => {
-    const chatId = msg.chat.id;
-    const text = msg.text ? msg.text.trim() : "";
-
-    if (!text || text.startsWith('/')) return;
-
-    // Menu Actions
-    if (text.includes("Check Balance")) {
-        const bal = getUserBalance(chatId);
-        return bot.sendMessage(chatId, `💰 *Live Balance Tracker*\n\nYour current wallet balance is: \`${bal.toFixed(2)} ETB\``, { parse_mode: "Markdown" });
-    } else if (text.includes("Register")) {
-        return bot.sendMessage(chatId, "⚠️ You are already registered!");
-    } else if (text.includes("Instruction")) {
-        return bot.sendMessage(chatId, "📖 Select cards, place your bet, and mark off numbers as they are called to complete lines!");
-    } else if (text.includes("Invite")) {
-        return bot.sendMessage(chatId, `✉️ Share your referral link with friends:\nhttps://t.me/AddisBingoBot?start=${chatId}`);
-    } else if (text.includes("Contact Support")) {
-        return bot.sendMessage(chatId, "📞 For support, please reach out to: @your_support_username");
-    }
-
-    // Step 1: Click "Deposit" -> Bot asks for amount
-    if (text.includes("Deposit")) {
-        userDepositState[chatId] = { step: 'AWAITING_AMOUNT' };
-        return bot.sendMessage(chatId, "💵 *Enter Deposit Amount*\n\nPlease reply with the amount you wish to deposit in ETB (e.g., `50`, `100`, `500`):", { parse_mode: "Markdown" });
-    }
-
-    // Step 2: Input Amount -> Bot shows payment details & asks for Txn ID
-    if (userDepositState[chatId]?.step === 'AWAITING_AMOUNT') {
-        const amount = parseFloat(text);
-        if (isNaN(amount) || amount <= 0) {
-            return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., `100`):");
-        }
-
-        userDepositState[chatId] = { step: 'AWAITING_TXN_ID', amount: amount };
-
-        return bot.sendMessage(chatId, 
-            `💰 *Telebirr Deposit Details*\n\n` +
-            `Requested Amount: *${amount.toFixed(2)} ETB*\n\n` +
-            `Please transfer *${amount.toFixed(2)} ETB* via Telebirr to:\n` +
-            `📱 *Number:* \`0900071279\`\n` +
-            `👤 *Account Name:* robel\n\n` +
-            `👇 *After sending the money, reply here with your Telebirr Transaction ID (or send a screenshot):*`, 
-            { parse_mode: "Markdown" }
-        );
-    }
-
-    // Step 3: Input Txn ID -> Forward request to Admin
-    if (userDepositState[chatId]?.step === 'AWAITING_TXN_ID') {
-        const amount = userDepositState[chatId].amount;
-        const depositId = `DEP-${Date.now()}`;
-
-        pendingDeposits[depositId] = {
-            userId: chatId,
-            amount: amount,
-            txnId: text,
-            userName: msg.from.first_name || "User"
-        };
-
-        resetDepositState(chatId);
-
-        bot.sendMessage(chatId, `⏳ *Deposit Request Received!*\n\nAmount: *${amount.toFixed(2)} ETB*\nTransaction ID: \`${text}\`\n\nYour payment is being verified by admin. You will be notified shortly.`, { parse_mode: "Markdown" });
-
-        return bot.sendMessage(ADMIN_CHAT_ID, 
-            `📥 *New Deposit Verification Request*\n\n` +
-            `👤 *User:* ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
-            `🆔 *User ID:* \`${chatId}\`\n` +
-            `💰 *Expected Amount:* *${amount.toFixed(2)} ETB*\n` +
-            `📄 *Submitted Txn ID:* \`${text}\`\n` +
-            `🔖 *Ref Code:* \`${depositId}\``, 
-            {
-                parse_mode: "Markdown",
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: `✅ Approve ${amount.toFixed(2)} ETB`, callback_data: `approve_${depositId}` },
-                            { text: "❌ Reject", callback_data: `reject_${depositId}` }
-                        ]
-                    ]
-                }
-            }
-        );
-    }
-});
-
-// Photo upload handler for deposit screenshots
-bot.on('photo', (msg) => {
-    const chatId = msg.chat.id;
-
-    if (userDepositState[chatId]?.step === 'AWAITING_TXN_ID') {
-        const amount = userDepositState[chatId].amount;
-        const depositId = `DEP-${Date.now()}`;
-        const photoId = msg.photo[msg.photo.length - 1].file_id;
-
-        pendingDeposits[depositId] = {
-            userId: chatId,
-            amount: amount,
-            txnId: "Screenshot attached",
-            userName: msg.from.first_name || "User"
-        };
-
-        resetDepositState(chatId);
-
-        bot.sendMessage(chatId, "⏳ *Screenshot Received!* Your deposit is under review.", { parse_mode: "Markdown" });
-
-        bot.sendPhoto(ADMIN_CHAT_ID, photoId, {
-            caption: `📥 *New Screenshot Deposit Request*\n\n` +
-                     `👤 *User:* ${msg.from.first_name}\n` +
-                     `🆔 *User ID:* \`${chatId}\`\n` +
-                     `💰 *Expected Amount:* *${amount.toFixed(2)} ETB*\n` +
-                     `🔖 *Ref Code:* \`${depositId}\``,
-            parse_mode: "Markdown",
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: `✅ Approve ${amount.toFixed(2)} ETB`, callback_data: `approve_${depositId}` },
-                        { text: "❌ Reject", callback_data: `reject_${depositId}` }
-                    ]
-                ]
-            }
-        });
-    }
-});
-
-// --- ADMIN CALLBACK BUTTON HANDLERS ---
-bot.on('callback_query', (query) => {
-    const data = query.data;
-
-    if (data.startsWith('approve_')) {
-        const depositId = data.replace('approve_', '');
-        const deposit = pendingDeposits[depositId];
-
-        if (!deposit) {
-            return bot.answerCallbackQuery(query.id, { text: "Request already processed or expired." });
-        }
-
-        const targetUserId = deposit.userId;
-        const amount = deposit.amount;
-
-        users[targetUserId] = users[targetUserId] || { balance: 0.00 };
-        users[targetUserId].balance += amount;
-
-        bot.sendMessage(ADMIN_CHAT_ID, `✅ *Approved!* Credited *${amount.toFixed(2)} ETB* to User \`${targetUserId}\`. New Balance: *${users[targetUserId].balance.toFixed(2)} ETB*`, { parse_mode: "Markdown" });
-        bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\nYour account has been credited with *${amount.toFixed(2)} ETB*.\n💰 Current Balance: *${users[targetUserId].balance.toFixed(2)} ETB*`, { parse_mode: "Markdown" });
-
-        delete pendingDeposits[depositId];
-        bot.answerCallbackQuery(query.id, { text: "Deposit Approved!" });
-
-    } else if (data.startsWith('reject_')) {
-        const depositId = data.replace('reject_', '');
-        const deposit = pendingDeposits[depositId];
-
-        if (!deposit) {
-            return bot.answerCallbackQuery(query.id, { text: "Request already processed or expired." });
-        }
-
-        const targetUserId = deposit.userId;
-
-        bot.sendMessage(ADMIN_CHAT_ID, `❌ Rejected deposit request \`${depositId}\`.`, { parse_mode: "Markdown" });
-        bot.sendMessage(targetUserId, `❌ *Deposit Rejected*\nWe could not verify your payment transaction ID. Please contact support if you need assistance.`, { parse_mode: "Markdown" });
-
-        delete pendingDeposits[depositId];
-        bot.answerCallbackQuery(query.id, { text: "Deposit Rejected" });
-    }
-});
-
-// --- WEBSOCKET ENGINE ---
-const MIN_CARDS = 3;
-const MAX_CARDS = 100;
-
-let gameState = {
-    status: 'WAITING', 
-    reservedCards: {}, 
-    drawnBalls: [],
-    availableBalls: Array.from({ length: 75 }, (_, i) => i + 1),
-    countdown: 30,
-    currentBall: null
+// Keyboard Layouts
+const mainKeyboard = {
+  reply_markup: {
+    keyboard: [
+      [{ text: "Play Bingo 🎰" }, { text: "Play Spin 🎰" }],
+      [{ text: "Register 📝" }, { text: "Deposit 💵" }],
+      [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
+      [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
+    ],
+    resize_keyboard: true
+  }
 };
 
-let countdownInterval = null;
-let ballDrawInterval = null;
+// /start command handler
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  const firstName = msg.from.first_name || "Player";
+  
+  if (!userBalances[chatId]) {
+    userBalances[chatId] = 0;
+  }
 
-io.on('connection', (socket) => {
-    socket.emit('syncState', {
-        status: gameState.status,
-        reservedCards: gameState.reservedCards,
-        drawnBalls: gameState.drawnBalls,
-        currentBall: gameState.currentBall,
-        countdown: gameState.countdown,
-        activeCardCount: Object.keys(gameState.reservedCards).length
-    });
+  const welcomeMessage = `👋 Welcome to Addis Bingo, ${firstName}!\n\n` +
+    `💰 Current Balance: ${userBalances[chatId]} ETB\n\n` +
+    `Choose an option below to get started:`;
 
-    socket.on('reserveCard', (cardId) => {
-        if (gameState.status === 'IN_PROGRESS') return socket.emit('errorMsg', 'Game in progress!');
-        if (gameState.reservedCards[cardId]) return socket.emit('errorMsg', `Card #${cardId} taken!`);
-
-        gameState.reservedCards[cardId] = socket.id;
-        const activeCount = Object.keys(gameState.reservedCards).length;
-        io.emit('cardReserved', { cardId, socketId: socket.id, activeCount });
-
-        if (activeCount >= MIN_CARDS && gameState.status === 'WAITING') {
-            startCountdown();
-        }
-    });
-
-    socket.on('unreserveCard', (cardId) => {
-        if (gameState.reservedCards[cardId] === socket.id && gameState.status !== 'IN_PROGRESS') {
-            delete gameState.reservedCards[cardId];
-            const activeCount = Object.keys(gameState.reservedCards).length;
-            io.emit('cardUnreserved', { cardId, activeCount });
-
-            if (activeCount < MIN_CARDS && gameState.status === 'COUNTDOWN') {
-                clearInterval(countdownInterval);
-                gameState.status = 'WAITING';
-                gameState.countdown = 30;
-                io.emit('countdownAborted', 'Waiting for minimum 3 cards...');
-            }
-        }
-    });
-
-    socket.on('disconnect', () => {
-        if (gameState.status !== 'IN_PROGRESS') {
-            for (let cardId in gameState.reservedCards) {
-                if (gameState.reservedCards[cardId] === socket.id) {
-                    delete gameState.reservedCards[cardId];
-                    const activeCount = Object.keys(gameState.reservedCards).length;
-                    io.emit('cardUnreserved', { cardId, activeCount });
-                }
-            }
-        }
-    });
+  bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
 });
 
-function startCountdown() {
-    gameState.status = 'COUNTDOWN';
-    gameState.countdown = 30;
+// Incoming message router
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  const text = msg.text;
 
-    countdownInterval = setInterval(() => {
-        gameState.countdown--;
-        const activeCount = Object.keys(gameState.reservedCards).length;
-        io.emit('countdownTick', { timeLeft: gameState.countdown, activeCount });
+  if (!text || text.startsWith('/')) return;
 
-        if (activeCount === MAX_CARDS || gameState.countdown <= 0) {
-            clearInterval(countdownInterval);
-            startBallDraw();
-        }
-    }, 1000);
-}
+  // Handle active deposit flow steps
+  if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
+    const amount = parseFloat(text);
+    if (isNaN(amount) || amount <= 0) {
+      return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., 100):");
+    }
+    userStates[chatId] = { step: 'AWAITING_PROOF', amount: amount };
+    return bot.sendMessage(chatId, `💵 Deposit Amount: ${amount} ETB\n\nPlease send your transaction ID or a screenshot of your payment receipt:`);
+  }
 
-function startBallDraw() {
-    gameState.status = 'IN_PROGRESS';
-    gameState.drawnBalls = [];
-    gameState.availableBalls = Array.from({ length: 75 }, (_, i) => i + 1);
+  if (userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') {
+    const depositAmount = userStates[chatId].amount;
+    delete userStates[chatId];
 
-    io.emit('gameStarted');
+    // Notify user
+    bot.sendMessage(chatId, "✅ Your deposit receipt has been submitted for review! You will be notified once approved.", mainKeyboard);
 
-    ballDrawInterval = setInterval(() => {
-        if (gameState.availableBalls.length === 0) {
-            clearInterval(ballDrawInterval);
-            return;
-        }
+    // Notify Admin
+    const adminMsg = `🚨 *New Deposit Request*\n\n` +
+      `👤 User: ${msg.from.first_name} (@${msg.from.username || 'N/A'})\n` +
+      `🆔 User ID: \`${chatId}\`\n` +
+      `💵 Amount: *${depositAmount} ETB*\n` +
+      `📄 Ref/Details: ${text || 'Photo Receipt Submitted'}`;
 
-        const randomIndex = Math.floor(Math.random() * gameState.availableBalls.length);
-        const ball = gameState.availableBalls.splice(randomIndex, 1)[0];
-        gameState.drawnBalls.push(ball);
-        gameState.currentBall = ball;
+    const approveOptions = {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Approve", callback_data: `approve_${chatId}_${depositAmount}` },
+            { text: "❌ Reject", callback_data: `reject_${chatId}` }
+          ]
+        ]
+      }
+    };
 
-        io.emit('ballDrawn', { ball, drawnBalls: gameState.drawnBalls });
-    }, 3000);
-}
+    if (msg.photo) {
+      const photoId = msg.photo[msg.photo.length - 1].file_id;
+      return bot.sendPhoto(ADMIN_CHAT_ID, photoId, { caption: adminMsg, ...approveOptions });
+    } else {
+      return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, approveOptions);
+    }
+  }
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  // Handle main keyboard options
+  switch (text) {
+    case "Deposit 💵":
+      userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
+      bot.sendMessage(chatId, "💳 Enter the amount you wish to deposit (in ETB):");
+      break;
+
+    case "Check Balance 💰":
+      const balance = userBalances[chatId] || 0;
+      bot.sendMessage(chatId, `💰 Your current balance is: *${balance} ETB*`, { parse_mode: 'Markdown' });
+      break;
+
+    case "Register 📝":
+      bot.sendMessage(chatId, "✅ You are already registered and ready to play!");
+      break;
+
+    case "Contact Support 📞":
+      bot.sendMessage(chatId, "📞 For support, please contact @AddisBingoSupport");
+      break;
+
+    case "Instruction 📖":
+      bot.sendMessage(chatId, "📖 Select a game (Bingo or Spin) from the menu, deposit funds, and start playing instantly!");
+      break;
+
+    case "Invite ✉️":
+      bot.sendMessage(chatId, `✉️ Invite your friends using your link:\nhttps://t.me/Adissbingoobot?start=${chatId}`);
+      break;
+
+    case "Play Bingo 🎰":
+    case "Play Spin 🎰":
+      bot.sendMessage(chatId, "🎰 Launching game session...");
+      break;
+
+    default:
+      bot.sendMessage(chatId, "Please select an option from the menu below:", mainKeyboard);
+      break;
+  }
+});
+
+// Admin callback query handler (Approve / Reject)
+bot.on('callback_query', (query) => {
+  const data = query.data;
+  const queryId = query.id;
+
+  if (data.startsWith('approve_')) {
+    const [, targetUserId, amountStr] = data.split('_');
+    const amount = parseFloat(amountStr);
+
+    userBalances[targetUserId] = (userBalances[targetUserId] || 0) + amount;
+
+    bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
+    bot.sendMessage(ADMIN_CHAT_ID, `✅ Approved ${amount} ETB deposit for user ${targetUserId}`);
+    bot.sendMessage(targetUserId, `🎉 Your deposit of *${amount} ETB* has been approved!\n💰 New Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
+  } else if (data.startsWith('reject_')) {
+    const [, targetUserId] = data.split('_');
+
+    bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
+    bot.sendMessage(ADMIN_CHAT_ID, `❌ Rejected deposit for user ${targetUserId}`);
+    bot.sendMessage(targetUserId, "❌ Your deposit request was rejected. Please contact support if you think this is an error.");
+  }
+});
+
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
