@@ -116,21 +116,11 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Telegram User ID Integration with Robust Fallback & Storage
+    // Telegram User ID Integration
     const tg = window.Telegram?.WebApp;
     if (tg) tg.ready();
 
-    let currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
-    
-    // If Telegram WebApp ID isn't exposed directly, check local storage or URL hash, else fallback safely
-    if (!currentUserId) {
-      currentUserId = localStorage.getItem("addis_bingo_uid");
-      if (!currentUserId) {
-        currentUserId = "user_" + Math.floor(Math.random() * 90000 + 10000);
-        localStorage.setItem("addis_bingo_uid", currentUserId);
-      }
-    }
-
+    let currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : "test_user";
     document.getElementById("debugUserDisplay").textContent = "ID: " + currentUserId;
 
     function showToast(msg) {
@@ -154,53 +144,38 @@
       let activeGames = 0;
       let drawnNumbers = [];
       let currentDrawTimer = null;
+      let activeBalancePath = null;
 
-      // 1. Broad Balance Path Scanning (Finds balance across any format the bot used)
-      const possiblePaths = [
-        `users/${currentUserId}/balance`,
-        `users/${currentUserId}/wallet`,
-        `balances/${currentUserId}`,
-        `players/${currentUserId}/balance`,
-        `users/${currentUserId}`
-      ];
-
-      possiblePaths.forEach(path => {
-        db.ref(path).on("value", (snapshot) => {
-          if (snapshot.exists()) {
-            let val = snapshot.val();
-            // If the node is an object, check common property fields inside it
-            if (typeof val === "object" && val !== null) {
-              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : null);
-            }
-            if (val !== null && !isNaN(val)) {
-              const walletDisplay = document.getElementById("walletBalance");
-              if (walletDisplay) {
-                walletDisplay.textContent = Number(val).toFixed(2);
+      // UNIVERSAL AUTO-DISCOVERY: Scan Firebase to find where the user's balance is stored
+      function discoverWallet() {
+        const potentialRoots = ["users", "balances", "players"];
+        
+        potentialRoots.forEach(root => {
+          db.ref(root).on("value", (snapshot) => {
+            if (!snapshot.exists()) return;
+            
+            snapshot.forEach((childSnapshot) => {
+              const key = childSnapshot.key;
+              const val = childSnapshot.val();
+              
+              // Check if this record belongs to our user (or matches closely/has balance)
+              if (key === currentUserId || (val && typeof val === "object" && (val.balance !== undefined || val.wallet !== undefined))) {
+                const foundBalance = typeof val === "object" ? (val.balance !== undefined ? val.balance : val.wallet) : val;
+                
+                if (foundBalance !== undefined && !isNaN(foundBalance)) {
+                  activeBalancePath = `${root}/${key}`;
+                  const walletDisplay = document.getElementById("walletBalance");
+                  if (walletDisplay) {
+                    walletDisplay.textContent = Number(foundBalance).toFixed(2);
+                  }
+                }
               }
-            }
-          }
-        });
-      });
-
-      // Also scan all users root to see if we can find a matching record if ID differs
-      db.ref("users").once("value", (snapshot) => {
-        if (snapshot.exists()) {
-          snapshot.forEach((childSnapshot) => {
-            const key = childSnapshot.key;
-            const data = childSnapshot.val();
-            // If user name matches or if there's only one user record in testing, auto-sync
-            if (data && (typeof data === "object") && (data.balance !== undefined || data.wallet !== undefined)) {
-              // If current ID is a random fallback, adopt this active database key
-              if (currentUserId.startsWith("user_") && !localStorage.getItem("addis_bingo_synced")) {
-                currentUserId = key;
-                localStorage.setItem("addis_bingo_uid", currentUserId);
-                localStorage.setItem("addis_bingo_synced", "true");
-                document.getElementById("debugUserDisplay").textContent = "ID: " + currentUserId + " (Synced)";
-              }
-            }
+            });
           });
-        }
-      });
+        });
+      }
+
+      discoverWallet();
 
       // 2. Selector Grid Rendering (Blue Reserved Cards)
       function renderGrid() {
@@ -292,7 +267,7 @@
         updateCardDaubs();
       }
 
-      // 4. Card Reservation Enforcement with Direct Firebase Balance Check
+      // 4. Card Reservation Enforcement with Dynamic Balance Check
       if (startBtn) {
         startBtn.addEventListener("click", () => {
           const stake = parseFloat(document.getElementById("stakeAmount").textContent);
@@ -304,18 +279,15 @@
             return showToast("You have already reserved a card for this round!");
           }
 
-          // Fetch fresh balance directly from Firebase using current user context
-          db.ref("users/" + currentUserId).once("value", (snapshot) => {
-            let userData = snapshot.exists() ? snapshot.val() : null;
-            let realWallet = 0;
+          // Use discovered balance path or fallback to standard user path
+          const checkPath = activeBalancePath || `users/${currentUserId}/balance`;
 
-            if (userData !== null) {
-              if (typeof userData === "object") {
-                realWallet = parseFloat(userData.balance || userData.wallet || 0);
-              } else {
-                realWallet = parseFloat(userData);
-              }
+          db.ref(checkPath).once("value", (snapshot) => {
+            let val = snapshot.exists() ? snapshot.val() : 0;
+            if (typeof val === "object" && val !== null) {
+              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
             }
+            const realWallet = parseFloat(val) || 0;
 
             if (realWallet < stake) {
               return showToast("⚠️ Insufficient balance (" + realWallet + " ETB)!");
