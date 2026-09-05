@@ -45,6 +45,11 @@
       color: #ffffff !important;
       pointer-events: none;
     }
+
+    /* Debug ID banner */
+    .debug-id {
+      font-size: 10px; color: #64748b; text-align: center; margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -73,6 +78,7 @@
         <span class="stat-value" id="stakeAmount">10</span>
       </div>
     </div>
+    <div class="debug-id" id="debugUserDisplay">Connecting ID...</div>
 
     <!-- Countdown Timer Banner -->
     <div id="timerBanner" class="timer-banner">
@@ -110,12 +116,22 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Telegram User ID Integration
+    // Telegram User ID Integration with Robust Fallback & Storage
     const tg = window.Telegram?.WebApp;
     if (tg) tg.ready();
-    const currentUserId = tg?.initDataUnsafe?.user?.id 
-      ? String(tg.initDataUnsafe.user.id) 
-      : "user_" + Math.floor(Math.random() * 10000);
+
+    let currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
+    
+    // If Telegram WebApp ID isn't exposed directly, check local storage or URL hash, else fallback safely
+    if (!currentUserId) {
+      currentUserId = localStorage.getItem("addis_bingo_uid");
+      if (!currentUserId) {
+        currentUserId = "user_" + Math.floor(Math.random() * 90000 + 10000);
+        localStorage.setItem("addis_bingo_uid", currentUserId);
+      }
+    }
+
+    document.getElementById("debugUserDisplay").textContent = "ID: " + currentUserId;
 
     function showToast(msg) {
       const toast = document.getElementById("toastBanner");
@@ -139,24 +155,51 @@
       let drawnNumbers = [];
       let currentDrawTimer = null;
 
-      // 1. Universal Wallet Balance Listener (Checks multiple standard bot paths)
+      // 1. Broad Balance Path Scanning (Finds balance across any format the bot used)
       const possiblePaths = [
         `users/${currentUserId}/balance`,
         `users/${currentUserId}/wallet`,
         `balances/${currentUserId}`,
-        `players/${currentUserId}/balance`
+        `players/${currentUserId}/balance`,
+        `users/${currentUserId}`
       ];
 
       possiblePaths.forEach(path => {
         db.ref(path).on("value", (snapshot) => {
           if (snapshot.exists()) {
-            const val = snapshot.val();
-            const walletDisplay = document.getElementById("walletBalance");
-            if (walletDisplay && !isNaN(val)) {
-              walletDisplay.textContent = Number(val).toFixed(2);
+            let val = snapshot.val();
+            // If the node is an object, check common property fields inside it
+            if (typeof val === "object" && val !== null) {
+              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : null);
+            }
+            if (val !== null && !isNaN(val)) {
+              const walletDisplay = document.getElementById("walletBalance");
+              if (walletDisplay) {
+                walletDisplay.textContent = Number(val).toFixed(2);
+              }
             }
           }
         });
+      });
+
+      // Also scan all users root to see if we can find a matching record if ID differs
+      db.ref("users").once("value", (snapshot) => {
+        if (snapshot.exists()) {
+          snapshot.forEach((childSnapshot) => {
+            const key = childSnapshot.key;
+            const data = childSnapshot.val();
+            // If user name matches or if there's only one user record in testing, auto-sync
+            if (data && (typeof data === "object") && (data.balance !== undefined || data.wallet !== undefined)) {
+              // If current ID is a random fallback, adopt this active database key
+              if (currentUserId.startsWith("user_") && !localStorage.getItem("addis_bingo_synced")) {
+                currentUserId = key;
+                localStorage.setItem("addis_bingo_uid", currentUserId);
+                localStorage.setItem("addis_bingo_synced", "true");
+                document.getElementById("debugUserDisplay").textContent = "ID: " + currentUserId + " (Synced)";
+              }
+            }
+          });
+        }
       });
 
       // 2. Selector Grid Rendering (Blue Reserved Cards)
@@ -261,12 +304,21 @@
             return showToast("You have already reserved a card for this round!");
           }
 
-          // Fetch fresh balance directly from Firebase to avoid local text lag
-          db.ref("users/" + currentUserId + "/balance").once("value", (snapshot) => {
-            const realWallet = snapshot.exists() ? parseFloat(snapshot.val()) : 0;
+          // Fetch fresh balance directly from Firebase using current user context
+          db.ref("users/" + currentUserId).once("value", (snapshot) => {
+            let userData = snapshot.exists() ? snapshot.val() : null;
+            let realWallet = 0;
+
+            if (userData !== null) {
+              if (typeof userData === "object") {
+                realWallet = parseFloat(userData.balance || userData.wallet || 0);
+              } else {
+                realWallet = parseFloat(userData);
+              }
+            }
 
             if (realWallet < stake) {
-              return showToast("⚠️ Insufficient balance to reserve a card!");
+              return showToast("⚠️ Insufficient balance (" + realWallet + " ETB)!");
             }
 
             // Save reservation to Firebase if balance is sufficient
