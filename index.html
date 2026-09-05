@@ -136,14 +136,27 @@
       let selectedCardIndex = 1;
       let currentReservations = {};
       let activeGames = 0;
+      let drawnNumbers = [];
+      let currentDrawTimer = null;
 
-      // 1. Live Wallet Balance Listener
-      db.ref("users/" + currentUserId + "/balance").on("value", (snapshot) => {
-        const currentBalance = snapshot.exists() ? snapshot.val() : 0.00;
-        const walletDisplay = document.getElementById("walletBalance");
-        if (walletDisplay) {
-          walletDisplay.textContent = Number(currentBalance).toFixed(2);
-        }
+      // 1. Universal Wallet Balance Listener (Checks multiple standard bot paths)
+      const possiblePaths = [
+        `users/${currentUserId}/balance`,
+        `users/${currentUserId}/wallet`,
+        `balances/${currentUserId}`,
+        `players/${currentUserId}/balance`
+      ];
+
+      possiblePaths.forEach(path => {
+        db.ref(path).on("value", (snapshot) => {
+          if (snapshot.exists()) {
+            const val = snapshot.val();
+            const walletDisplay = document.getElementById("walletBalance");
+            if (walletDisplay && !isNaN(val)) {
+              walletDisplay.textContent = Number(val).toFixed(2);
+            }
+          }
+        });
       });
 
       // 2. Selector Grid Rendering (Blue Reserved Cards)
@@ -191,7 +204,18 @@
         return nums;
       }
 
-      // 3. Fixed 5x5 Bingo Preview Card
+      // 3. Fixed 5x5 Bingo Preview Card & Daub Updates
+      function updateCardDaubs() {
+        if (!preview) return;
+        const cells = preview.querySelectorAll(".bingo-cell");
+        cells.forEach(cell => {
+          const val = parseInt(cell.textContent);
+          if (!isNaN(val) && drawnNumbers.includes(val)) {
+            cell.classList.add("daubed");
+          }
+        });
+      }
+
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
@@ -211,10 +235,18 @@
               cell.classList.add("daubed");
             } else {
               cell.textContent = num;
+              cell.addEventListener("click", () => {
+                if (drawnNumbers.includes(num)) {
+                  cell.classList.toggle("daubed");
+                } else {
+                  showToast("Number hasn't been drawn yet!");
+                }
+              });
             }
             preview.appendChild(cell);
           });
         }
+        updateCardDaubs();
       }
 
       // 4. Card Reservation Enforcement
@@ -259,9 +291,43 @@
       db.ref("activeGames").on("value", (snapshot) => {
         activeGames = snapshot.val() || 0;
         if (activeGamesDisplay) activeGamesDisplay.textContent = activeGames;
+
+        if (activeGames === 1) {
+          startNumberDrawing();
+        } else {
+          stopNumberDrawing();
+        }
       });
 
-      // 6. Global 30-Second Countdown Logic
+      // 6. Live Number Calling Loop
+      function startNumberDrawing() {
+        drawnNumbers = [];
+        showToast("📣 Game started! Drawing numbers...");
+        if (currentDrawTimer) clearInterval(currentDrawTimer);
+
+        currentDrawTimer = setInterval(() => {
+          if (drawnNumbers.length >= 75) {
+            clearInterval(currentDrawTimer);
+            return;
+          }
+
+          let nextNum;
+          do {
+            nextNum = Math.floor(Math.random() * 75) + 1;
+          } while (drawnNumbers.includes(nextNum));
+
+          drawnNumbers.push(nextNum);
+          showToast(`📣 Number Drawn: ${nextNum}`);
+          updateCardDaubs();
+        }, 4000);
+      }
+
+      function stopNumberDrawing() {
+        if (currentDrawTimer) clearInterval(currentDrawTimer);
+        drawnNumbers = [];
+      }
+
+      // 7. Global 30-Second Countdown Logic
       let isTimerRunning = false;
       function startCountdown() {
         if (isTimerRunning) return;
