@@ -249,26 +249,32 @@
         updateCardDaubs();
       }
 
-      // 4. Card Reservation Enforcement
+      // 4. Card Reservation Enforcement with Direct Firebase Balance Check
       if (startBtn) {
         startBtn.addEventListener("click", () => {
-          const wallet = parseFloat(document.getElementById("walletBalance").textContent);
           const stake = parseFloat(document.getElementById("stakeAmount").textContent);
 
           if (activeGames >= 1) {
             return showToast("Please wait until the current game ends.");
           }
-          if (wallet < stake) {
-            return showToast("⚠️ Insufficient balance to reserve a card!");
-          }
           if (currentReservations[currentUserId]) {
             return showToast("You have already reserved a card for this round!");
           }
 
-          // Save reservation to Firebase
-          db.ref("reservations/" + currentUserId).set({
-            cardIndex: selectedCardIndex,
-            timestamp: Date.now()
+          // Fetch fresh balance directly from Firebase to avoid local text lag
+          db.ref("users/" + currentUserId + "/balance").once("value", (snapshot) => {
+            const realWallet = snapshot.exists() ? parseFloat(snapshot.val()) : 0;
+
+            if (realWallet < stake) {
+              return showToast("⚠️ Insufficient balance to reserve a card!");
+            }
+
+            // Save reservation to Firebase if balance is sufficient
+            db.ref("reservations/" + currentUserId).set({
+              cardIndex: selectedCardIndex,
+              timestamp: Date.now()
+            });
+            showToast("Card reserved successfully!");
           });
         });
       }
