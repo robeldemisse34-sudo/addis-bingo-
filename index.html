@@ -12,49 +12,34 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
   <style>
-    /* In-App Toast Notification Banner */
     .toast-banner {
-      position: fixed; 
-      top: -70px; 
-      left: 50%; 
-      transform: translateX(-50%);
-      background: #1e293b; 
-      color: #fbbf24; 
-      border: 1.5px solid #f59e0b;
-      padding: 12px 24px;
-      border-radius: 12px; 
-      font-weight: 600; 
-      font-size: 14px;
+      position: fixed; top: -70px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fbbf24; border: 1.5px solid #f59e0b;
+      padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-      transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
-      z-index: 1000; 
-      white-space: nowrap;
+      transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; white-space: nowrap;
     }
     .toast-banner.show { top: 20px; }
-
-    /* 30-Second Countdown Banner */
     .timer-banner {
       display: none; background-color: #2563eb; color: #fff;
       text-align: center; padding: 8px; margin: 10px 0; border-radius: 6px;
       font-weight: bold; font-size: 14px;
     }
-
-    /* Reserved Cell Styling - Solid Blue */
     .selector-cell.occupied {
-      background-color: #2563eb !important;
-      color: #ffffff !important;
-      pointer-events: none;
+      background-color: #2563eb !important; color: #ffffff !important; pointer-events: none;
     }
-
-    /* Debug ID banner */
-    .debug-id {
-      font-size: 10px; color: #64748b; text-align: center; margin-top: 4px;
+    /* Account Picker Modal / Box */
+    .account-picker {
+      background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 8px;
+      margin-bottom: 10px; font-size: 12px; color: #f8fafc; text-align: center;
+    }
+    .account-picker select {
+      background: #0f172a; color: #38bdf8; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; margin-top: 4px;
     }
   </style>
 </head>
 <body>
 
-  <!-- Toast Notification Banner -->
   <div id="toastBanner" class="toast-banner"></div>
 
   <div class="game-container">
@@ -78,7 +63,12 @@
         <span class="stat-value" id="stakeAmount">10</span>
       </div>
     </div>
-    <div class="debug-id" id="debugUserDisplay">Connecting ID...</div>
+
+    <!-- Account Picker Box to Fix Mismatched IDs -->
+    <div class="account-picker" id="accountPickerBox">
+      <div>Select Your Firebase Account ID:</div>
+      <select id="accountSelect"><option value="">Scanning Database...</option></select>
+    </div>
 
     <!-- Countdown Timer Banner -->
     <div id="timerBanner" class="timer-banner">
@@ -101,7 +91,6 @@
   </div>
 
   <script>
-    // Your exact Firebase configuration keys
     const firebaseConfig = {
       apiKey: "AIzaSyCSPvq-XVlhjufHT-MHhjrirTk0W3d-nTg",
       authDomain: "addis-bingo-149fc.firebaseapp.com",
@@ -116,12 +105,11 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Telegram User ID Integration
     const tg = window.Telegram?.WebApp;
     if (tg) tg.ready();
 
-    let currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : "test_user";
-    document.getElementById("debugUserDisplay").textContent = "ID: " + currentUserId;
+    let tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
+    let currentUserId = localStorage.getItem("addis_bingo_locked_uid") || tgUserId;
 
     function showToast(msg) {
       const toast = document.getElementById("toastBanner");
@@ -138,46 +126,105 @@
       const activeGamesDisplay = document.getElementById("activeGames");
       const timerBanner = document.getElementById("timerBanner");
       const countdownDisplay = document.getElementById("countdown");
+      const accountSelect = document.getElementById("accountSelect");
 
       let selectedCardIndex = 1;
       let currentReservations = {};
       let activeGames = 0;
       let drawnNumbers = [];
       let currentDrawTimer = null;
-      let activeBalancePath = null;
 
-      // UNIVERSAL AUTO-DISCOVERY: Scan Firebase to find where the user's balance is stored
-      function discoverWallet() {
-        const potentialRoots = ["users", "balances", "players"];
-        
-        potentialRoots.forEach(root => {
-          db.ref(root).on("value", (snapshot) => {
-            if (!snapshot.exists()) return;
-            
-            snapshot.forEach((childSnapshot) => {
-              const key = childSnapshot.key;
-              const val = childSnapshot.val();
-              
-              // Check if this record belongs to our user (or matches closely/has balance)
-              if (key === currentUserId || (val && typeof val === "object" && (val.balance !== undefined || val.wallet !== undefined))) {
-                const foundBalance = typeof val === "object" ? (val.balance !== undefined ? val.balance : val.wallet) : val;
-                
-                if (foundBalance !== undefined && !isNaN(foundBalance)) {
-                  activeBalancePath = `${root}/${key}`;
-                  const walletDisplay = document.getElementById("walletBalance");
-                  if (walletDisplay) {
-                    walletDisplay.textContent = Number(foundBalance).toFixed(2);
-                  }
+      // Scan all nodes in database to populate the Account Picker dropdown
+      function scanDatabaseAccounts() {
+        db.ref("/").once("value", (snapshot) => {
+          if (!snapshot.exists()) return;
+          const rootData = snapshot.val();
+          accountSelect.innerHTML = '<option value="">-- Choose your account --</option>';
+          
+          let foundAccounts = [];
+
+          // Look into common root keys like users, balances, players
+          ["users", "balances", "players", "wallets"].forEach(rootKey => {
+            if (rootData[rootKey] && typeof rootData[rootKey] === "object") {
+              Object.keys(rootData[rootKey]).forEach(userId => {
+                const userData = rootData[rootKey][userId];
+                let bal = 0;
+                if (typeof userData === "object" && userData !== null) {
+                  bal = userData.balance !== undefined ? userData.balance : (userData.wallet !== undefined ? userData.wallet : 0);
+                } else if (!isNaN(userData)) {
+                  bal = userData;
                 }
-              }
-            });
+                foundAccounts.push({ path: `${rootKey}/${userId}`, id: userId, balance: bal });
+              });
+            }
+          });
+
+          foundAccounts.forEach(acc => {
+            const opt = document.createElement("option");
+            opt.value = acc.path;
+            opt.textContent = `ID: ${acc.id} (Balance: ${acc.balance} ETB)`;
+            if (acc.id === currentUserId || acc.path.includes(currentUserId)) {
+              opt.selected = true;
+              bindBalanceListener(acc.path, acc.balance);
+            }
+            accountSelect.appendChild(opt);
           });
         });
       }
 
-      discoverWallet();
+      let activeBalanceRef = null;
+      function bindBalanceListener(path, initialBal) {
+        if (activeBalanceRef) activeBalanceRef.off();
+        activeBalanceRef = db.ref(path);
+        
+        document.getElementById("walletBalance").textContent = Number(initialBal || 0).toFixed(2);
 
-      // 2. Selector Grid Rendering (Blue Reserved Cards)
+        activeBalanceRef.on("value", (snapshot) => {
+          if (!snapshot.exists()) return;
+          let val = snapshot.val();
+          if (typeof val === "object" && val !== null) {
+            val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
+          }
+          const finalBal = parseFloat(val) || 0;
+          document.getElementById("walletBalance").textContent = finalBal.toFixed(2);
+        });
+      }
+
+      accountSelect.addEventListener("change", (e) => {
+        const selectedPath = e.target.value;
+        if (!selectedPath) return;
+        localStorage.setItem("addis_bingo_locked_path", selectedPath);
+        const parts = selectedPath.split("/");
+        currentUserId = parts[parts.length - 1];
+        localStorage.setItem("addis_bingo_locked_uid", currentUserId);
+        
+        db.ref(selectedPath).once("value", (snapshot) => {
+          let val = snapshot.exists() ? snapshot.val() : 0;
+          if (typeof val === "object" && val !== null) {
+            val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
+          }
+          bindBalanceListener(selectedPath, val);
+          showToast("Account synced successfully!");
+        });
+      });
+
+      // If user previously locked an account path, use it directly
+      const savedPath = localStorage.getItem("addis_bingo_locked_path");
+      if (savedPath) {
+        db.ref(savedPath).once("value", (snapshot) => {
+          if (snapshot.exists()) {
+            let val = snapshot.val();
+            if (typeof val === "object" && val !== null) {
+              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
+            }
+            bindBalanceListener(savedPath, val);
+          }
+          scanDatabaseAccounts();
+        });
+      } else {
+        scanDatabaseAccounts();
+      }
+
       function renderGrid() {
         if (!grid) return;
         grid.innerHTML = "";
@@ -187,14 +234,8 @@
           const cell = document.createElement("div");
           cell.className = "selector-cell";
           cell.textContent = i;
-
-          if (reservedIndices.includes(i)) {
-            cell.classList.add("occupied");
-          }
-
-          if (i === selectedCardIndex && !reservedIndices.includes(i)) {
-            cell.classList.add("selected");
-          }
+          if (reservedIndices.includes(i)) cell.classList.add("occupied");
+          if (i === selectedCardIndex && !reservedIndices.includes(i)) cell.classList.add("selected");
 
           cell.addEventListener("click", () => {
             if (reservedIndices.includes(i)) return;
@@ -207,13 +248,11 @@
         }
       }
 
-      // Deterministic Numbers Generator (Keeps numbers fixed for each Card ID)
       function getFixedNumbersForCard(cardId, colIndex, count) {
         const nums = [];
         const min = colIndex * 15 + 1;
         const max = (colIndex + 1) * 15;
         let seed = cardId * 100 + colIndex * 10;
-
         while (nums.length < count) {
           seed = (seed * 9301 + 49297) % 233280;
           const rand = min + Math.floor((seed / 233280) * (max - min + 1));
@@ -222,30 +261,21 @@
         return nums;
       }
 
-      // 3. Fixed 5x5 Bingo Preview Card & Daub Updates
       function updateCardDaubs() {
         if (!preview) return;
-        const cells = preview.querySelectorAll(".bingo-cell");
-        cells.forEach(cell => {
+        preview.querySelectorAll(".bingo-cell").forEach(cell => {
           const val = parseInt(cell.textContent);
-          if (!isNaN(val) && drawnNumbers.includes(val)) {
-            cell.classList.add("daubed");
-          }
+          if (!isNaN(val) && drawnNumbers.includes(val)) cell.classList.add("daubed");
         });
       }
 
       function generatePreviewCard() {
         if (!preview) return;
         preview.innerHTML = "";
-
-        const colB = getFixedNumbersForCard(selectedCardIndex, 0, 5);
-        const colI = getFixedNumbersForCard(selectedCardIndex, 1, 5);
-        const colN = getFixedNumbersForCard(selectedCardIndex, 2, 5);
-        const colG = getFixedNumbersForCard(selectedCardIndex, 3, 5);
-        const colO = getFixedNumbersForCard(selectedCardIndex, 4, 5);
+        const cols = [0, 1, 2, 3, 4].map(c => getFixedNumbersForCard(selectedCardIndex, c, 5));
 
         for (let r = 0; r < 5; r++) {
-          [colB[r], colI[r], colN[r], colG[r], colO[r]].forEach((num, c) => {
+          [cols[0][r], cols[1][r], cols[2][r], cols[3][r], cols[4][r]].forEach((num, c) => {
             const cell = document.createElement("div");
             cell.className = "bingo-cell";
             if (r === 2 && c === 2) {
@@ -254,11 +284,8 @@
             } else {
               cell.textContent = num;
               cell.addEventListener("click", () => {
-                if (drawnNumbers.includes(num)) {
-                  cell.classList.toggle("daubed");
-                } else {
-                  showToast("Number hasn't been drawn yet!");
-                }
+                if (drawnNumbers.includes(num)) cell.classList.toggle("daubed");
+                else showToast("Number hasn't been drawn yet!");
               });
             }
             preview.appendChild(cell);
@@ -267,131 +294,62 @@
         updateCardDaubs();
       }
 
-      // 4. Card Reservation Enforcement with Dynamic Balance Check
       if (startBtn) {
         startBtn.addEventListener("click", () => {
           const stake = parseFloat(document.getElementById("stakeAmount").textContent);
+          const currentWallet = parseFloat(document.getElementById("walletBalance").textContent) || 0;
 
-          if (activeGames >= 1) {
-            return showToast("Please wait until the current game ends.");
-          }
-          if (currentReservations[currentUserId]) {
-            return showToast("You have already reserved a card for this round!");
-          }
+          if (activeGames >= 1) return showToast("Please wait until current game ends.");
+          if (currentReservations[currentUserId]) return showToast("You already reserved a card!");
+          if (currentWallet < stake) return showToast(`⚠️ Insufficient balance (${currentWallet} ETB)!`);
 
-          // Use discovered balance path or fallback to standard user path
-          const checkPath = activeBalancePath || `users/${currentUserId}/balance`;
-
-          db.ref(checkPath).once("value", (snapshot) => {
-            let val = snapshot.exists() ? snapshot.val() : 0;
-            if (typeof val === "object" && val !== null) {
-              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
-            }
-            const realWallet = parseFloat(val) || 0;
-
-            if (realWallet < stake) {
-              return showToast("⚠️ Insufficient balance (" + realWallet + " ETB)!");
-            }
-
-            // Save reservation to Firebase if balance is sufficient
-            db.ref("reservations/" + currentUserId).set({
-              cardIndex: selectedCardIndex,
-              timestamp: Date.now()
-            });
-            showToast("Card reserved successfully!");
+          db.ref("reservations/" + currentUserId).set({
+            cardIndex: selectedCardIndex,
+            timestamp: Date.now()
           });
+          showToast("Card reserved successfully!");
         });
       }
 
-      // 5. Real-Time Firebase Database Listeners
       db.ref("reservations").on("value", (snapshot) => {
         currentReservations = snapshot.val() || {};
-        const playerKeys = Object.keys(currentReservations);
-        const count = playerKeys.length;
-
+        const count = Object.keys(currentReservations).length;
         renderGrid();
-
-        if (count === 1) {
-          showToast("Card reserved! (1/2 players ready)");
-        } else if (count === 2) {
-          startCountdown();
-        }
+        if (count === 2) startCountdown();
       });
 
       db.ref("activeGames").on("value", (snapshot) => {
         activeGames = snapshot.val() || 0;
         if (activeGamesDisplay) activeGamesDisplay.textContent = activeGames;
-
         if (activeGames === 1) {
-          startNumberDrawing();
-        } else {
-          stopNumberDrawing();
+          drawnNumbers = [];
+          showToast("📣 Game started!");
         }
       });
 
-      // 6. Live Number Calling Loop
-      function startNumberDrawing() {
-        drawnNumbers = [];
-        showToast("📣 Game started! Drawing numbers...");
-        if (currentDrawTimer) clearInterval(currentDrawTimer);
-
-        currentDrawTimer = setInterval(() => {
-          if (drawnNumbers.length >= 75) {
-            clearInterval(currentDrawTimer);
-            return;
-          }
-
-          let nextNum;
-          do {
-            nextNum = Math.floor(Math.random() * 75) + 1;
-          } while (drawnNumbers.includes(nextNum));
-
-          drawnNumbers.push(nextNum);
-          showToast(`📣 Number Drawn: ${nextNum}`);
-          updateCardDaubs();
-        }, 4000);
-      }
-
-      function stopNumberDrawing() {
-        if (currentDrawTimer) clearInterval(currentDrawTimer);
-        drawnNumbers = [];
-      }
-
-      // 7. Global 30-Second Countdown Logic
       let isTimerRunning = false;
       function startCountdown() {
         if (isTimerRunning) return;
         isTimerRunning = true;
-
         let secondsLeft = 30;
         if (timerBanner) timerBanner.style.display = "block";
-        if (countdownDisplay) countdownDisplay.textContent = secondsLeft;
 
         const timer = setInterval(() => {
           secondsLeft--;
           if (countdownDisplay) countdownDisplay.textContent = secondsLeft;
-
           if (secondsLeft <= 0) {
             clearInterval(timer);
             if (timerBanner) timerBanner.style.display = "none";
             isTimerRunning = false;
-
-            // Reset lobby & start game state in database
             db.ref("activeGames").set(1);
             db.ref("reservations").remove();
-            showToast("Game Started!");
           }
         }, 1000);
       }
 
       renderGrid();
       generatePreviewCard();
-      if (refreshBtn) {
-        refreshBtn.addEventListener("click", () => {
-          renderGrid();
-          generatePreviewCard();
-        });
-      }
+      if (refreshBtn) refreshBtn.addEventListener("click", () => { scanDatabaseAccounts(); renderGrid(); });
     }
 
     if (document.readyState === "loading") {
