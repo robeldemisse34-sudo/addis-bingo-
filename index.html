@@ -28,13 +28,17 @@
     .selector-cell.occupied {
       background-color: #2563eb !important; color: #ffffff !important; pointer-events: none;
     }
-    /* Account Picker Modal / Box */
     .account-picker {
       background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 8px;
       margin-bottom: 10px; font-size: 12px; color: #f8fafc; text-align: center;
     }
-    .account-picker select {
-      background: #0f172a; color: #38bdf8; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; margin-top: 4px;
+    .account-picker input, .account-picker select {
+      background: #0f172a; color: #38bdf8; border: 1px solid #475569; padding: 6px 10px;
+      border-radius: 4px; margin-top: 4px; font-size: 13px; text-align: center;
+    }
+    .account-picker button {
+      background: #2563eb; color: #fff; border: none; padding: 6px 12px;
+      border-radius: 4px; margin-left: 6px; cursor: pointer; font-weight: bold;
     }
   </style>
 </head>
@@ -64,10 +68,14 @@
       </div>
     </div>
 
-    <!-- Account Picker Box to Fix Mismatched IDs -->
-    <div class="account-picker" id="accountPickerBox">
-      <div>Select Your Firebase Account ID:</div>
-      <select id="accountSelect"><option value="">Scanning Database...</option></select>
+    <!-- Direct User ID Linker -->
+    <div class="account-picker">
+      <div>Sync Account ID Manually:</div>
+      <input type="text" id="manualUserIdInput" placeholder="Enter Telegram / User ID">
+      <button id="syncUserBtn">Sync</button>
+      <div style="margin-top: 6px;">
+        <select id="accountSelect"><option value="">Or select detected account...</option></select>
+      </div>
     </div>
 
     <!-- Countdown Timer Banner -->
@@ -127,103 +135,114 @@
       const timerBanner = document.getElementById("timerBanner");
       const countdownDisplay = document.getElementById("countdown");
       const accountSelect = document.getElementById("accountSelect");
+      const manualInput = document.getElementById("manualUserIdInput");
+      const syncBtn = document.getElementById("syncUserBtn");
 
       let selectedCardIndex = 1;
       let currentReservations = {};
       let activeGames = 0;
       let drawnNumbers = [];
-      let currentDrawTimer = null;
+      let activeBalanceRef = null;
 
-      // Scan all nodes in database to populate the Account Picker dropdown
-      function scanDatabaseAccounts() {
-        db.ref("/").once("value", (snapshot) => {
-          if (!snapshot.exists()) return;
-          const rootData = snapshot.val();
-          accountSelect.innerHTML = '<option value="">-- Choose your account --</option>';
-          
-          let foundAccounts = [];
+      if (currentUserId && manualInput) {
+        manualInput.value = currentUserId;
+      }
 
-          // Look into common root keys like users, balances, players
-          ["users", "balances", "players", "wallets"].forEach(rootKey => {
-            if (rootData[rootKey] && typeof rootData[rootKey] === "object") {
-              Object.keys(rootData[rootKey]).forEach(userId => {
-                const userData = rootData[rootKey][userId];
+      // Safe Node Reader (Avoids Permission Denied on Root)
+      function scanSpecificNodes() {
+        const nodes = ["users", "balances", "players"];
+        accountSelect.innerHTML = '<option value="">Searching known nodes...</option>';
+        let foundAccounts = [];
+
+        let completed = 0;
+        nodes.forEach(node => {
+          db.ref(node).once("value", (snapshot) => {
+            completed++;
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              Object.keys(data).forEach(id => {
+                const val = data[id];
                 let bal = 0;
-                if (typeof userData === "object" && userData !== null) {
-                  bal = userData.balance !== undefined ? userData.balance : (userData.wallet !== undefined ? userData.wallet : 0);
-                } else if (!isNaN(userData)) {
-                  bal = userData;
+                if (typeof val === "object" && val !== null) {
+                  bal = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
+                } else if (!isNaN(val)) {
+                  bal = val;
                 }
-                foundAccounts.push({ path: `${rootKey}/${userId}`, id: userId, balance: bal });
+                foundAccounts.push({ path: `${node}/${id}`, id: id, balance: bal });
               });
             }
-          });
 
-          foundAccounts.forEach(acc => {
-            const opt = document.createElement("option");
-            opt.value = acc.path;
-            opt.textContent = `ID: ${acc.id} (Balance: ${acc.balance} ETB)`;
-            if (acc.id === currentUserId || acc.path.includes(currentUserId)) {
-              opt.selected = true;
-              bindBalanceListener(acc.path, acc.balance);
+            if (completed === nodes.length) {
+              accountSelect.innerHTML = '<option value="">-- Select detected account --</option>';
+              if (foundAccounts.length === 0) {
+                accountSelect.innerHTML = '<option value="">No list access (Use manual input)</option>';
+              }
+              foundAccounts.forEach(acc => {
+                const opt = document.createElement("option");
+                opt.value = acc.path;
+                opt.textContent = `ID: ${acc.id} (${acc.balance} ETB)`;
+                accountSelect.appendChild(opt);
+              });
             }
-            accountSelect.appendChild(opt);
+          }).catch(() => {
+            completed++;
+            if (completed === nodes.length) {
+              accountSelect.innerHTML = '<option value="">Enter ID manually above</option>';
+            }
           });
         });
       }
 
-      let activeBalanceRef = null;
-      function bindBalanceListener(path, initialBal) {
+      function attachBalanceListener(uid) {
+        if (!uid) return;
         if (activeBalanceRef) activeBalanceRef.off();
-        activeBalanceRef = db.ref(path);
-        
-        document.getElementById("walletBalance").textContent = Number(initialBal || 0).toFixed(2);
 
+        // Check users/UID path first
+        activeBalanceRef = db.ref(`users/${uid}`);
         activeBalanceRef.on("value", (snapshot) => {
-          if (!snapshot.exists()) return;
-          let val = snapshot.val();
-          if (typeof val === "object" && val !== null) {
-            val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
+          if (snapshot.exists()) {
+            let val = snapshot.val();
+            let bal = typeof val === "object" ? (val.balance ?? val.wallet ?? 0) : val;
+            document.getElementById("walletBalance").textContent = Number(bal).toFixed(2);
+            showToast(`Synced! Balance: ${bal} ETB`);
+          } else {
+            // Check direct balance node
+            db.ref(`balances/${uid}`).once("value", (snap) => {
+              if (snap.exists()) {
+                let bal = snap.val();
+                document.getElementById("walletBalance").textContent = Number(bal).toFixed(2);
+                showToast(`Synced! Balance: ${bal} ETB`);
+              }
+            });
           }
-          const finalBal = parseFloat(val) || 0;
-          document.getElementById("walletBalance").textContent = finalBal.toFixed(2);
+        });
+      }
+
+      // Sync button click handler
+      if (syncBtn) {
+        syncBtn.addEventListener("click", () => {
+          const targetId = manualInput.value.trim();
+          if (!targetId) return showToast("Please enter a User ID");
+          currentUserId = targetId;
+          localStorage.setItem("addis_bingo_locked_uid", targetId);
+          attachBalanceListener(targetId);
         });
       }
 
       accountSelect.addEventListener("change", (e) => {
-        const selectedPath = e.target.value;
-        if (!selectedPath) return;
-        localStorage.setItem("addis_bingo_locked_path", selectedPath);
-        const parts = selectedPath.split("/");
-        currentUserId = parts[parts.length - 1];
-        localStorage.setItem("addis_bingo_locked_uid", currentUserId);
-        
-        db.ref(selectedPath).once("value", (snapshot) => {
-          let val = snapshot.exists() ? snapshot.val() : 0;
-          if (typeof val === "object" && val !== null) {
-            val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
-          }
-          bindBalanceListener(selectedPath, val);
-          showToast("Account synced successfully!");
-        });
+        const path = e.target.value;
+        if (!path) return;
+        const uid = path.split("/").pop();
+        manualInput.value = uid;
+        currentUserId = uid;
+        localStorage.setItem("addis_bingo_locked_uid", uid);
+        attachBalanceListener(uid);
       });
 
-      // If user previously locked an account path, use it directly
-      const savedPath = localStorage.getItem("addis_bingo_locked_path");
-      if (savedPath) {
-        db.ref(savedPath).once("value", (snapshot) => {
-          if (snapshot.exists()) {
-            let val = snapshot.val();
-            if (typeof val === "object" && val !== null) {
-              val = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
-            }
-            bindBalanceListener(savedPath, val);
-          }
-          scanDatabaseAccounts();
-        });
-      } else {
-        scanDatabaseAccounts();
+      if (currentUserId) {
+        attachBalanceListener(currentUserId);
       }
+      scanSpecificNodes();
 
       function renderGrid() {
         if (!grid) return;
@@ -313,43 +332,17 @@
 
       db.ref("reservations").on("value", (snapshot) => {
         currentReservations = snapshot.val() || {};
-        const count = Object.keys(currentReservations).length;
         renderGrid();
-        if (count === 2) startCountdown();
       });
 
       db.ref("activeGames").on("value", (snapshot) => {
         activeGames = snapshot.val() || 0;
         if (activeGamesDisplay) activeGamesDisplay.textContent = activeGames;
-        if (activeGames === 1) {
-          drawnNumbers = [];
-          showToast("📣 Game started!");
-        }
       });
-
-      let isTimerRunning = false;
-      function startCountdown() {
-        if (isTimerRunning) return;
-        isTimerRunning = true;
-        let secondsLeft = 30;
-        if (timerBanner) timerBanner.style.display = "block";
-
-        const timer = setInterval(() => {
-          secondsLeft--;
-          if (countdownDisplay) countdownDisplay.textContent = secondsLeft;
-          if (secondsLeft <= 0) {
-            clearInterval(timer);
-            if (timerBanner) timerBanner.style.display = "none";
-            isTimerRunning = false;
-            db.ref("activeGames").set(1);
-            db.ref("reservations").remove();
-          }
-        }, 1000);
-      }
 
       renderGrid();
       generatePreviewCard();
-      if (refreshBtn) refreshBtn.addEventListener("click", () => { scanDatabaseAccounts(); renderGrid(); });
+      if (refreshBtn) refreshBtn.addEventListener("click", () => { scanSpecificNodes(); renderGrid(); });
     }
 
     if (document.readyState === "loading") {
