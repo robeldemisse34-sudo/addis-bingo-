@@ -2,12 +2,29 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const TelegramBot = require('node-telegram-bot-api');
+const admin = require('firebase-admin');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }
 });
+
+// Initialize Firebase Admin SDK using Render Environment Variable
+if (!admin.apps.length) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: "https://addis-bingo-149fc-default-rtdb.firebaseio.com"
+    });
+    console.log("Firebase Admin SDK connected successfully.");
+  } catch (err) {
+    console.error("Firebase Admin initialization error:", err.message);
+  }
+}
+
+const db = admin.database();
 
 const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "461465625";
@@ -29,9 +46,8 @@ bot.on('polling_error', (error) => {
 app.use(express.static('.'));
 app.use(express.json());
 
-// In-memory data store
+// In-memory data store for UI states
 const userStates = {};
-const userBalances = {};
 const processedTransactions = new Set();
 const processedCallbacks = new Set();
 
@@ -47,15 +63,35 @@ const mainKeyboard = {
   }
 };
 
-// Helper function for sending welcome message
-function sendWelcome(chatId, firstName) {
-  if (!userBalances[chatId]) {
-    userBalances[chatId] = 0;
+// Helper function: Get balance from Firebase
+async function getBalance(userId) {
+  try {
+    const snapshot = await db.ref(`users/${userId}/balance`).once('value');
+    return snapshot.exists() ? snapshot.val() : 0;
+  } catch (e) {
+    console.error("Firebase fetch error:", e);
+    return 0;
   }
+}
+
+// Helper function: Update balance in Firebase
+async function setBalance(userId, newBalance) {
+  try {
+    await db.ref(`users/${userId}`).update({
+      balance: newBalance
+    });
+  } catch (e) {
+    console.error("Firebase update error:", e);
+  }
+}
+
+// Helper function for sending welcome message
+async function sendWelcome(chatId, firstName) {
   delete userStates[chatId];
+  const currentBal = await getBalance(chatId);
 
   const welcomeMessage = `👋 Welcome to Addis Bingo, ${firstName}!\n\n` +
-    `💰 Current Balance: ${userBalances[chatId]} ETB\n\n` +
+    `💰 Current Balance: ${currentBal} ETB\n\n` +
     `Choose an option below to get started:`;
 
   bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
@@ -75,11 +111,10 @@ bot.setMyCommands([
   { command: 'support', description: 'Contact support' }
 ]);
 
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const rawText = msg.text ? msg.text.trim() : '';
 
-  // Standardize command inputs from yellow menu
   let text = rawText;
   if (rawText === '/start') return sendWelcome(chatId, msg.from.first_name || "Player");
   if (rawText === '/playbingo') text = "Play Bingo 🎰";
@@ -173,7 +208,7 @@ bot.on('message', (msg) => {
   // WITHDRAWAL FLOW
   if (userStates[chatId] === 'AWAITING_WITHDRAW_AMOUNT') {
     const amount = parseFloat(text);
-    const currentBalance = userBalances[chatId] || 0;
+    const currentBalance = await getBalance(chatId);
 
     if (isNaN(amount) || amount <= 0) {
       return bot.sendMessage(chatId, "❌ Invalid amount. Please enter a valid number (e.g., 100):");
@@ -197,6 +232,7 @@ bot.on('message', (msg) => {
     const phone = text;
     delete userStates[chatId];
 
+    const currentBalance = await getBalance(chatId);
     const reqId = Date.now();
     bot.sendMessage(chatId, `⏳ Your withdrawal request of *${withdrawAmount} ETB* to *${phone}* has been sent to Admin.`, { parse_mode: 'Markdown', ...mainKeyboard });
 
@@ -205,7 +241,7 @@ bot.on('message', (msg) => {
       `🆔 *User ID:* \`${chatId}\`\n` +
       `💵 *Amount:* *${withdrawAmount} ETB*\n` +
       `📱 *Telebirr Phone:* \`${phone}\`\n` +
-      `💰 *User Current Balance:* ${userBalances[chatId] || 0} ETB`;
+      `💰 *User Current Balance:* ${currentBalance} ETB`;
 
     const adminButtons = {
       parse_mode: 'Markdown',
@@ -230,7 +266,7 @@ bot.on('message', (msg) => {
       break;
 
     case "Withdraw 🏧":
-      const balance = userBalances[chatId] || 0;
+      const balance = await getBalance(chatId);
       if (balance <= 0) {
         return bot.sendMessage(chatId, "❌ You have 0 ETB balance. Deposit or play to earn funds before withdrawing!");
       }
@@ -239,7 +275,7 @@ bot.on('message', (msg) => {
       break;
 
     case "Check Balance 💰":
-      const currentBal = userBalances[chatId] || 0;
+      const currentBal = await getBalance(chatId);
       bot.sendMessage(chatId, `💰 Your current balance is: *${currentBal} ETB*`, { parse_mode: 'Markdown' });
       break;
 
@@ -263,7 +299,7 @@ bot.on('message', (msg) => {
       bot.sendMessage(chatId, "🎰 Click below to launch Addis Bingo:", {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🎰 Play Bingo", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+            [{ text: "🎰 Play Bingo", web_app: { url: "https://addis-bingo-green.vercel.app" } }]
           ]
         }
       });
@@ -273,7 +309,7 @@ bot.on('message', (msg) => {
       bot.sendMessage(chatId, "🎰 Click below to launch Addis Spin:", {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🎰 Play Spin", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+            [{ text: "🎰 Play Spin", web_app: { url: "https://addis-bingo-green.vercel.app" } }]
           ]
         }
       });
@@ -287,7 +323,7 @@ bot.on('message', (msg) => {
 });
 
 // Admin Callbacks
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
   const data = query.data;
   const queryId = query.id;
   const fromAdminId = query.from.id.toString();
@@ -305,7 +341,9 @@ bot.on('callback_query', (query) => {
     const [, targetUserId, amountStr, txId] = data.split('_');
     const amount = parseFloat(amountStr) || 0;
 
-    userBalances[targetUserId] = (userBalances[targetUserId] || 0) + amount;
+    const currentBal = await getBalance(targetUserId);
+    const newBal = currentBal + amount;
+    await setBalance(targetUserId, newBal);
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
     bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\` (Tx: ${txId})`, {
@@ -314,7 +352,7 @@ bot.on('callback_query', (query) => {
       parse_mode: 'Markdown'
     });
 
-    bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
+    bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('reject_')) {
     processedCallbacks.add(data);
     const [, targetUserId] = data.split('_');
@@ -332,7 +370,9 @@ bot.on('callback_query', (query) => {
     const [, targetUserId, amountStr] = data.split('_');
     const amount = parseFloat(amountStr) || 0;
 
-    userBalances[targetUserId] = (userBalances[targetUserId] || 0) - amount;
+    const currentBal = await getBalance(targetUserId);
+    const newBal = Math.max(0, currentBal - amount);
+    await setBalance(targetUserId, newBal);
 
     bot.answerCallbackQuery(queryId, { text: "Withdrawal Approved!" });
     bot.editMessageText(`✅ *WITHDRAWAL COMPLETED*\nAmount: ${amount} ETB deducted from User ID \`${targetUserId}\`.`, {
@@ -341,7 +381,7 @@ bot.on('callback_query', (query) => {
       parse_mode: 'Markdown'
     });
 
-    bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${userBalances[targetUserId]} ETB*`, { parse_mode: 'Markdown' });
+    bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('wdreject_')) {
     processedCallbacks.add(data);
     const [, targetUserId] = data.split('_');
