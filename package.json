@@ -1,13 +1,15 @@
 {
-  "name": "addis-bingo-bot",
+  "name": "addis-bingo-telegram-mini-app",
   "version": "1.0.0",
+  "description": "Addis Bingo Telegram Mini App & Bot",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "node-telegram-bot-api": "^0.66.0",
-    "socket.io": "^4.7.5"
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0",
+    "node-telegram-bot-api": "^0.64.0",
+    "socket.io": "^4.7.2"
   }
 }
