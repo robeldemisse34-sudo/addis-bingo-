@@ -27,7 +27,7 @@ if (!admin.apps.length) {
 const db = admin.database();
 
 const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || "461465625";
+const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID || "461465625").trim();
 
 const bot = new TelegramBot(token, {
   polling: {
@@ -67,7 +67,7 @@ const mainKeyboard = {
 async function getBalance(userId) {
   try {
     const snapshot = await db.ref(`users/${userId}/balance`).once('value');
-    return snapshot.exists() ? snapshot.val() : 0;
+    return snapshot.exists() ? Number(snapshot.val()) : 0;
   } catch (e) {
     console.error("Firebase fetch error:", e);
     return 0;
@@ -323,17 +323,19 @@ bot.on('message', async (msg) => {
 bot.on('callback_query', async (query) => {
   const data = query.data;
   const queryId = query.id;
-  const fromAdminId = query.from.id.toString();
+  const clickerId = String(query.from.id).trim();
+  const messageChatId = String(query.message.chat.id).trim();
 
-  if (fromAdminId !== ADMIN_CHAT_ID) {
+  // Flexible admin check: matches user ID or message destination chat ID
+  if (clickerId !== ADMIN_CHAT_ID && messageChatId !== ADMIN_CHAT_ID) {
+    console.log(`Unauthorized click attempt by ID ${clickerId}`);
     return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized!", show_alert: true });
   }
 
   if (processedCallbacks.has(data)) {
-    return bot.answerCallbackQuery(queryId, { text: "⚠️ This request has already been processed!", show_alert: true });
+    return bot.answerCallbackQuery(queryId, { text: "⚠️ Already processed!", show_alert: true });
   }
 
-  // Short callback handler for deposit approval (`ap_USERID_AMOUNT`)
   if (data.startsWith('ap_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
@@ -346,14 +348,13 @@ bot.on('callback_query', async (query) => {
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
     bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\``, {
-      chat_id: ADMIN_CHAT_ID,
+      chat_id: query.message.chat.id,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
 
     bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } 
-  // Short callback handler for deposit rejection (`rj_USERID`)
   else if (data.startsWith('rj_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
@@ -361,14 +362,13 @@ bot.on('callback_query', async (query) => {
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
     bot.editMessageText(`❌ *REJECTED DEPOSIT*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
-      chat_id: ADMIN_CHAT_ID,
+      chat_id: query.message.chat.id,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
 
     bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
   } 
-  // Short callback handler for withdrawal approval (`wap_USERID_AMOUNT`)
   else if (data.startsWith('wap_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
@@ -381,14 +381,13 @@ bot.on('callback_query', async (query) => {
 
     bot.answerCallbackQuery(queryId, { text: "Withdrawal Approved!" });
     bot.editMessageText(`✅ *WITHDRAWAL COMPLETED*\nAmount: ${amount} ETB deducted from User ID \`${targetUserId}\`.`, {
-      chat_id: ADMIN_CHAT_ID,
+      chat_id: query.message.chat.id,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
 
     bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } 
-  // Short callback handler for withdrawal rejection (`wrj_USERID`)
   else if (data.startsWith('wrj_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
@@ -396,7 +395,7 @@ bot.on('callback_query', async (query) => {
 
     bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!" });
     bot.editMessageText(`❌ *WITHDRAWAL REJECTED*\nWithdrawal request for User ID \`${targetUserId}\` was declined.`, {
-      chat_id: ADMIN_CHAT_ID,
+      chat_id: query.message.chat.id,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
