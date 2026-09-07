@@ -1,12 +1,16 @@
+const path = require('path');
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
-const express = require('express');
 
 const app = express();
 app.use(express.json());
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+// Serve static frontend files from the "public" folder
+app.use(express.static(path.join(__dirname, 'public')));
 
+// Firebase Setup
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`
@@ -17,15 +21,18 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 const bot = new TelegramBot(token);
 
-// User state tracking for multi-step prompts (e.g. Deposit amount)
-const userStates = {};
+// Serve the WebApp HTML on root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
+// Telegram Webhook Endpoint
 app.post(`/bot${token}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Inline Buttons Handler (Approve / Reject)
+// Handle Inline Buttons (Approve / Reject)
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
@@ -55,15 +62,12 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// All Menu Buttons & Text Messages
+// Handle Commands and Menu Options
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
-  const userId = msg.from.id;
 
-  // 1. Send Main Menu Command
   if (text === '/start') {
-    delete userStates[chatId];
     return bot.sendMessage(chatId, "Welcome to Addis Bingo!", {
       reply_markup: {
         keyboard: [
@@ -77,72 +81,14 @@ bot.on('message', async (msg) => {
     });
   }
 
-  // 2. Register / Play Bingo (Open WebApp)
   if (text === 'Register 📝' || text === 'Play Bingo 🎰' || text === 'Play Spin 🎰') {
-    delete userStates[chatId];
-    return bot.sendMessage(chatId, "Tap below to launch Addis Bingo App:", {
+    return bot.sendMessage(chatId, "Tap below to launch Addis Bingo:", {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🚀 Open Web App", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+          [{ text: "🚀 Launch Game", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
         ]
       }
     });
-  }
-
-  // 3. Check Balance
-  if (text === 'Check Balance 💰') {
-    delete userStates[chatId];
-    const snapshot = await db.ref(`users/${userId}/balance`).once('value');
-    const balance = snapshot.val() || 0;
-    return bot.sendMessage(chatId, `💰 Your current balance is: ${balance} ETB`);
-  }
-
-  // 4. Deposit Initiated
-  if (text === 'Deposit 💵') {
-    userStates[chatId] = { step: 'AWAITING_AMOUNT' };
-    return bot.sendMessage(chatId, "💳 Enter the amount you wish to deposit (in ETB):");
-  }
-
-  // 5. Handle Deposit Steps
-  if (userStates[chatId] && userStates[chatId].step === 'AWAITING_AMOUNT') {
-    const amount = parseFloat(text);
-    if (isNaN(amount) || amount <= 0) {
-      return bot.sendMessage(chatId, "Please enter a valid positive number for deposit.");
-    }
-
-    userStates[chatId] = { step: 'AWAITING_TXID', amount: amount };
-    return bot.sendMessage(chatId, `💵 Deposit Amount: ${amount} ETB\n\nPlease send your Telebirr Transaction ID or receipt screenshot:`);
-  }
-
-  if (userStates[chatId] && userStates[chatId].step === 'AWAITING_TXID') {
-    const amount = userStates[chatId].amount;
-    delete userStates[chatId];
-
-    // Forward to Admin
-    const adminChatId = process.env.ADMIN_CHAT_ID;
-    if (adminChatId) {
-      await bot.sendMessage(adminChatId, `📥 *New Deposit Request*\nUser: ${userId}\nAmount: ${amount} ETB\nDetails/TxID: ${text}`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "✅ Approve", callback_data: `approve_${userId}_${amount}` }]
-          ]
-        }
-      });
-    }
-
-    return bot.sendMessage(chatId, "✅ Your deposit request has been sent to Admin for approval!");
-  }
-
-  // 6. Support & Instructions
-  if (text === 'Contact Support 📞') {
-    delete userStates[chatId];
-    return bot.sendMessage(chatId, "📞 Support contact: @AddisBingoSupport");
-  }
-
-  if (text === 'Instruction 📖') {
-    delete userStates[chatId];
-    return bot.sendMessage(chatId, "📖 Rules: Deposit ETB, buy tickets in the WebApp, match 5 numbers to win!");
   }
 });
 
