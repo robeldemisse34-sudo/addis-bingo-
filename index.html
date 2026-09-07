@@ -28,18 +28,6 @@
     .selector-cell.occupied {
       background-color: #2563eb !important; color: #ffffff !important; pointer-events: none;
     }
-    .account-picker {
-      background: #1e293b; border: 1px solid #334155; padding: 10px; border-radius: 8px;
-      margin-bottom: 10px; font-size: 12px; color: #f8fafc; text-align: center;
-    }
-    .account-picker input, .account-picker select {
-      background: #0f172a; color: #38bdf8; border: 1px solid #475569; padding: 6px 10px;
-      border-radius: 4px; margin-top: 4px; font-size: 13px; text-align: center;
-    }
-    .account-picker button {
-      background: #2563eb; color: #fff; border: none; padding: 6px 12px;
-      border-radius: 4px; margin-left: 6px; cursor: pointer; font-weight: bold;
-    }
   </style>
 </head>
 <body>
@@ -65,16 +53,6 @@
       <div class="stat-box">
         <span class="stat-title">Stake</span>
         <span class="stat-value" id="stakeAmount">10</span>
-      </div>
-    </div>
-
-    <!-- Direct User ID Linker -->
-    <div class="account-picker">
-      <div>Sync Account ID Manually:</div>
-      <input type="text" id="manualUserIdInput" placeholder="Enter Telegram / User ID">
-      <button id="syncUserBtn">Sync</button>
-      <div style="margin-top: 6px;">
-        <select id="accountSelect"><option value="">Or select detected account...</option></select>
       </div>
     </div>
 
@@ -113,11 +91,15 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // Auto-Detect Telegram WebApp User
     const tg = window.Telegram?.WebApp;
-    if (tg) tg.ready();
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
 
-    let tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
-    let currentUserId = localStorage.getItem("addis_bingo_locked_uid") || tgUserId;
+    // Get Telegram ID dynamically
+    const currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
 
     function showToast(msg) {
       const toast = document.getElementById("toastBanner");
@@ -134,115 +116,38 @@
       const activeGamesDisplay = document.getElementById("activeGames");
       const timerBanner = document.getElementById("timerBanner");
       const countdownDisplay = document.getElementById("countdown");
-      const accountSelect = document.getElementById("accountSelect");
-      const manualInput = document.getElementById("manualUserIdInput");
-      const syncBtn = document.getElementById("syncUserBtn");
 
       let selectedCardIndex = 1;
       let currentReservations = {};
       let activeGames = 0;
       let drawnNumbers = [];
-      let activeBalanceRef = null;
 
-      if (currentUserId && manualInput) {
-        manualInput.value = currentUserId;
-      }
-
-      // Safe Node Reader (Avoids Permission Denied on Root)
-      function scanSpecificNodes() {
-        const nodes = ["users", "balances", "players"];
-        accountSelect.innerHTML = '<option value="">Searching known nodes...</option>';
-        let foundAccounts = [];
-
-        let completed = 0;
-        nodes.forEach(node => {
-          db.ref(node).once("value", (snapshot) => {
-            completed++;
-            if (snapshot.exists()) {
-              const data = snapshot.val();
-              Object.keys(data).forEach(id => {
-                const val = data[id];
-                let bal = 0;
-                if (typeof val === "object" && val !== null) {
-                  bal = val.balance !== undefined ? val.balance : (val.wallet !== undefined ? val.wallet : 0);
-                } else if (!isNaN(val)) {
-                  bal = val;
-                }
-                foundAccounts.push({ path: `${node}/${id}`, id: id, balance: bal });
-              });
-            }
-
-            if (completed === nodes.length) {
-              accountSelect.innerHTML = '<option value="">-- Select detected account --</option>';
-              if (foundAccounts.length === 0) {
-                accountSelect.innerHTML = '<option value="">No list access (Use manual input)</option>';
-              }
-              foundAccounts.forEach(acc => {
-                const opt = document.createElement("option");
-                opt.value = acc.path;
-                opt.textContent = `ID: ${acc.id} (${acc.balance} ETB)`;
-                accountSelect.appendChild(opt);
-              });
-            }
-          }).catch(() => {
-            completed++;
-            if (completed === nodes.length) {
-              accountSelect.innerHTML = '<option value="">Enter ID manually above</option>';
-            }
-          });
-        });
-      }
-
-      function attachBalanceListener(uid) {
+      // Dynamic Automatic Balance Fetcher
+      function autoFetchBalance(uid) {
         if (!uid) return;
-        if (activeBalanceRef) activeBalanceRef.off();
 
-        // Check users/UID path first
-        activeBalanceRef = db.ref(`users/${uid}`);
-        activeBalanceRef.on("value", (snapshot) => {
+        // Listener 1: users/USER_ID
+        db.ref(`users/${uid}`).on("value", (snapshot) => {
           if (snapshot.exists()) {
             let val = snapshot.val();
             let bal = typeof val === "object" ? (val.balance ?? val.wallet ?? 0) : val;
             document.getElementById("walletBalance").textContent = Number(bal).toFixed(2);
-            showToast(`Synced! Balance: ${bal} ETB`);
           } else {
-            // Check direct balance node
-            db.ref(`balances/${uid}`).once("value", (snap) => {
+            // Listener 2: balances/USER_ID
+            db.ref(`balances/${uid}`).on("value", (snap) => {
               if (snap.exists()) {
                 let bal = snap.val();
-                document.getElementById("walletBalance").textContent = Number(bal).toFixed(2);
-                showToast(`Synced! Balance: ${bal} ETB`);
+                let finalBal = typeof bal === "object" ? (bal.balance ?? bal.wallet ?? 0) : bal;
+                document.getElementById("walletBalance").textContent = Number(finalBal).toFixed(2);
               }
             });
           }
         });
       }
 
-      // Sync button click handler
-      if (syncBtn) {
-        syncBtn.addEventListener("click", () => {
-          const targetId = manualInput.value.trim();
-          if (!targetId) return showToast("Please enter a User ID");
-          currentUserId = targetId;
-          localStorage.setItem("addis_bingo_locked_uid", targetId);
-          attachBalanceListener(targetId);
-        });
-      }
-
-      accountSelect.addEventListener("change", (e) => {
-        const path = e.target.value;
-        if (!path) return;
-        const uid = path.split("/").pop();
-        manualInput.value = uid;
-        currentUserId = uid;
-        localStorage.setItem("addis_bingo_locked_uid", uid);
-        attachBalanceListener(uid);
-      });
-
       if (currentUserId) {
-        attachBalanceListener(currentUserId);
+        autoFetchBalance(currentUserId);
       }
-      scanSpecificNodes();
 
       function renderGrid() {
         if (!grid) return;
@@ -318,6 +223,7 @@
           const stake = parseFloat(document.getElementById("stakeAmount").textContent);
           const currentWallet = parseFloat(document.getElementById("walletBalance").textContent) || 0;
 
+          if (!currentUserId) return showToast("Error: Open app inside Telegram!");
           if (activeGames >= 1) return showToast("Please wait until current game ends.");
           if (currentReservations[currentUserId]) return showToast("You already reserved a card!");
           if (currentWallet < stake) return showToast(`⚠️ Insufficient balance (${currentWallet} ETB)!`);
@@ -342,7 +248,7 @@
 
       renderGrid();
       generatePreviewCard();
-      if (refreshBtn) refreshBtn.addEventListener("click", () => { scanSpecificNodes(); renderGrid(); });
+      if (refreshBtn) refreshBtn.addEventListener("click", () => { renderGrid(); });
     }
 
     if (document.readyState === "loading") {
