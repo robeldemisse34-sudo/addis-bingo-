@@ -26,7 +26,7 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-// Updated with your new token
+// Tokens and Admin Config
 const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAE_pcIOixslb5JbsShPek3Pbbb2fk1AWGE";
 const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID || "461465625").trim();
 
@@ -66,7 +66,14 @@ const mainKeyboard = {
 async function getBalance(userId) {
   try {
     const snapshot = await db.ref(`users/${userId}/balance`).once('value');
-    return snapshot.exists() ? Number(snapshot.val()) : 0;
+    if (snapshot.exists()) {
+      return Number(snapshot.val()) || 0;
+    }
+    const altSnapshot = await db.ref(`users/${userId}`).once('value');
+    if (altSnapshot.exists() && typeof altSnapshot.val() === 'number') {
+      return Number(altSnapshot.val());
+    }
+    return 0;
   } catch (e) {
     console.error("Firebase fetch error:", e);
     return 0;
@@ -76,7 +83,7 @@ async function getBalance(userId) {
 async function setBalance(userId, newBalance) {
   try {
     await db.ref(`users/${userId}`).update({
-      balance: newBalance
+      balance: Number(newBalance)
     });
   } catch (e) {
     console.error("Firebase update error:", e);
@@ -312,7 +319,7 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Admin Callbacks with visual alerts
+// Admin Callbacks
 bot.on('callback_query', async (query) => {
   const data = query.data;
   const queryId = query.id;
