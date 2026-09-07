@@ -91,15 +91,15 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Auto-Detect Telegram WebApp User
+    // Auto-detect Telegram SDK user context
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
     }
 
-    // Get Telegram ID dynamically
-    const currentUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null;
+    // Extract Telegram User ID dynamically or fallback to 8043202811
+    let tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : "8043202811";
 
     function showToast(msg) {
       const toast = document.getElementById("toastBanner");
@@ -114,40 +114,47 @@
       const startBtn = document.getElementById("startBtn");
       const refreshBtn = document.getElementById("refreshBtn");
       const activeGamesDisplay = document.getElementById("activeGames");
-      const timerBanner = document.getElementById("timerBanner");
-      const countdownDisplay = document.getElementById("countdown");
+      const walletDisplay = document.getElementById("walletBalance");
 
       let selectedCardIndex = 1;
       let currentReservations = {};
       let activeGames = 0;
       let drawnNumbers = [];
 
-      // Dynamic Automatic Balance Fetcher
-      function autoFetchBalance(uid) {
+      // Comprehensive Deep Scanner for User Balance across Firebase paths
+      function deepScanUserBalance(uid) {
         if (!uid) return;
 
-        // Listener 1: users/USER_ID
-        db.ref(`users/${uid}`).on("value", (snapshot) => {
-          if (snapshot.exists()) {
-            let val = snapshot.val();
-            let bal = typeof val === "object" ? (val.balance ?? val.wallet ?? 0) : val;
-            document.getElementById("walletBalance").textContent = Number(bal).toFixed(2);
-          } else {
-            // Listener 2: balances/USER_ID
-            db.ref(`balances/${uid}`).on("value", (snap) => {
-              if (snap.exists()) {
-                let bal = snap.val();
-                let finalBal = typeof bal === "object" ? (bal.balance ?? bal.wallet ?? 0) : bal;
-                document.getElementById("walletBalance").textContent = Number(finalBal).toFixed(2);
+        const possiblePaths = [
+          `users/${uid}`,
+          `balances/${uid}`,
+          `players/${uid}`,
+          `wallets/${uid}`,
+          `accounts/${uid}`
+        ];
+
+        possiblePaths.forEach((path) => {
+          db.ref(path).on("value", (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              let extractedBalance = 0;
+
+              if (typeof data === "number" || typeof data === "string") {
+                extractedBalance = parseFloat(data);
+              } else if (typeof data === "object" && data !== null) {
+                extractedBalance = data.balance ?? data.wallet ?? data.amount ?? data.coins ?? 0;
               }
-            });
-          }
+
+              if (extractedBalance > 0) {
+                walletDisplay.textContent = Number(extractedBalance).toFixed(2);
+              }
+            }
+          });
         });
       }
 
-      if (currentUserId) {
-        autoFetchBalance(currentUserId);
-      }
+      // Execute balance scan on start
+      deepScanUserBalance(tgUserId);
 
       function renderGrid() {
         if (!grid) return;
@@ -221,14 +228,13 @@
       if (startBtn) {
         startBtn.addEventListener("click", () => {
           const stake = parseFloat(document.getElementById("stakeAmount").textContent);
-          const currentWallet = parseFloat(document.getElementById("walletBalance").textContent) || 0;
+          const currentWallet = parseFloat(walletDisplay.textContent) || 0;
 
-          if (!currentUserId) return showToast("Error: Open app inside Telegram!");
           if (activeGames >= 1) return showToast("Please wait until current game ends.");
-          if (currentReservations[currentUserId]) return showToast("You already reserved a card!");
+          if (currentReservations[tgUserId]) return showToast("You already reserved a card!");
           if (currentWallet < stake) return showToast(`⚠️ Insufficient balance (${currentWallet} ETB)!`);
 
-          db.ref("reservations/" + currentUserId).set({
+          db.ref("reservations/" + tgUserId).set({
             cardIndex: selectedCardIndex,
             timestamp: Date.now()
           });
@@ -248,7 +254,10 @@
 
       renderGrid();
       generatePreviewCard();
-      if (refreshBtn) refreshBtn.addEventListener("click", () => { renderGrid(); });
+      if (refreshBtn) refreshBtn.addEventListener("click", () => { 
+        deepScanUserBalance(tgUserId);
+        renderGrid(); 
+      });
     }
 
     if (document.readyState === "loading") {
