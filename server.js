@@ -26,7 +26,8 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAEBE7wiZ1ifz2cfbaULSvDaOg_uOm3z0a0";
+// Updated with your new token
+const token = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8784582049:AAE_pcIOixslb5JbsShPek3Pbbb2fk1AWGE";
 const ADMIN_CHAT_ID = String(process.env.ADMIN_CHAT_ID || "461465625").trim();
 
 const bot = new TelegramBot(token, {
@@ -46,7 +47,6 @@ bot.on('polling_error', (error) => {
 app.use(express.static('.'));
 app.use(express.json());
 
-// In-memory data store for UI states
 const userStates = {};
 const processedTransactions = new Set();
 const processedCallbacks = new Set();
@@ -63,7 +63,6 @@ const mainKeyboard = {
   }
 };
 
-// Helper function: Get balance from Firebase
 async function getBalance(userId) {
   try {
     const snapshot = await db.ref(`users/${userId}/balance`).once('value');
@@ -74,7 +73,6 @@ async function getBalance(userId) {
   }
 }
 
-// Helper function: Update balance in Firebase
 async function setBalance(userId, newBalance) {
   try {
     await db.ref(`users/${userId}`).update({
@@ -82,10 +80,10 @@ async function setBalance(userId, newBalance) {
     });
   } catch (e) {
     console.error("Firebase update error:", e);
+    throw e;
   }
 }
 
-// Helper function for sending welcome message
 async function sendWelcome(chatId, firstName) {
   delete userStates[chatId];
   const currentBal = await getBalance(chatId);
@@ -97,7 +95,6 @@ async function sendWelcome(chatId, firstName) {
   bot.sendMessage(chatId, welcomeMessage, mainKeyboard);
 }
 
-// Register slash commands for Telegram UI menu
 bot.setMyCommands([
   { command: 'start', description: 'Start the bot' },
   { command: 'playbingo', description: 'Start playing Bingo' },
@@ -127,7 +124,6 @@ bot.on('message', async (msg) => {
   if (rawText === '/invite') text = "Invite ✉️";
   if (rawText === '/support') text = "Contact Support 📞";
 
-  // DEPOSIT FLOW: Step 1 - Amount Input
   if (userStates[chatId] === 'AWAITING_DEPOSIT_AMOUNT') {
     const amount = parseFloat(text);
     if (isNaN(amount) || amount <= 0) {
@@ -137,7 +133,6 @@ bot.on('message', async (msg) => {
     return bot.sendMessage(chatId, `💵 Deposit Amount: *${amount} ETB*\n\nPlease send a valid 10-character Telebirr Transaction ID (e.g., \`DI38EQPZ4Y\`) or a screenshot of your payment receipt:`, { parse_mode: 'Markdown' });
   }
 
-  // DEPOSIT FLOW: Step 2 - Proof Submission
   if (userStates[chatId] && userStates[chatId].step === 'AWAITING_PROOF') {
     const depositAmount = userStates[chatId].amount;
 
@@ -203,7 +198,6 @@ bot.on('message', async (msg) => {
     return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
   }
 
-  // WITHDRAWAL FLOW
   if (userStates[chatId] === 'AWAITING_WITHDRAW_AMOUNT') {
     const amount = parseFloat(text);
     const currentBalance = await getBalance(chatId);
@@ -255,7 +249,6 @@ bot.on('message', async (msg) => {
     return bot.sendMessage(ADMIN_CHAT_ID, adminMsg, adminButtons);
   }
 
-  // Navigation Options
   switch (text) {
     case "Deposit 💵":
       userStates[chatId] = 'AWAITING_DEPOSIT_AMOUNT';
@@ -319,88 +312,85 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Admin Callbacks
+// Admin Callbacks with visual alerts
 bot.on('callback_query', async (query) => {
   const data = query.data;
   const queryId = query.id;
-  const clickerId = String(query.from.id).trim();
-  const messageChatId = String(query.message.chat.id).trim();
-
-  // Flexible admin check: matches user ID or message destination chat ID
-  if (clickerId !== ADMIN_CHAT_ID && messageChatId !== ADMIN_CHAT_ID) {
-    console.log(`Unauthorized click attempt by ID ${clickerId}`);
-    return bot.answerCallbackQuery(queryId, { text: "🚫 Unauthorized!", show_alert: true });
-  }
 
   if (processedCallbacks.has(data)) {
     return bot.answerCallbackQuery(queryId, { text: "⚠️ Already processed!", show_alert: true });
   }
 
-  if (data.startsWith('ap_')) {
-    processedCallbacks.add(data);
-    const parts = data.split('_');
-    const targetUserId = parts[1];
-    const amount = parseFloat(parts[2]) || 0;
+  try {
+    if (data.startsWith('ap_')) {
+      processedCallbacks.add(data);
+      const parts = data.split('_');
+      const targetUserId = parts[1];
+      const amount = parseFloat(parts[2]) || 0;
 
-    const currentBal = await getBalance(targetUserId);
-    const newBal = currentBal + amount;
-    await setBalance(targetUserId, newBal);
+      const currentBal = await getBalance(targetUserId);
+      const newBal = currentBal + amount;
+      await setBalance(targetUserId, newBal);
 
-    bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
-    bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\``, {
-      chat_id: query.message.chat.id,
-      message_id: query.message.message_id,
-      parse_mode: 'Markdown'
-    });
+      await bot.answerCallbackQuery(queryId, { text: "Deposit Approved!", show_alert: true });
+      await bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\``, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown'
+      });
 
-    bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
-  } 
-  else if (data.startsWith('rj_')) {
-    processedCallbacks.add(data);
-    const parts = data.split('_');
-    const targetUserId = parts[1];
+      bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
+    } 
+    else if (data.startsWith('rj_')) {
+      processedCallbacks.add(data);
+      const parts = data.split('_');
+      const targetUserId = parts[1];
 
-    bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
-    bot.editMessageText(`❌ *REJECTED DEPOSIT*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
-      chat_id: query.message.chat.id,
-      message_id: query.message.message_id,
-      parse_mode: 'Markdown'
-    });
+      await bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!", show_alert: true });
+      await bot.editMessageText(`❌ *REJECTED DEPOSIT*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown'
+      });
 
-    bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
-  } 
-  else if (data.startsWith('wap_')) {
-    processedCallbacks.add(data);
-    const parts = data.split('_');
-    const targetUserId = parts[1];
-    const amount = parseFloat(parts[2]) || 0;
+      bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
+    } 
+    else if (data.startsWith('wap_')) {
+      processedCallbacks.add(data);
+      const parts = data.split('_');
+      const targetUserId = parts[1];
+      const amount = parseFloat(parts[2]) || 0;
 
-    const currentBal = await getBalance(targetUserId);
-    const newBal = Math.max(0, currentBal - amount);
-    await setBalance(targetUserId, newBal);
+      const currentBal = await getBalance(targetUserId);
+      const newBal = Math.max(0, currentBal - amount);
+      await setBalance(targetUserId, newBal);
 
-    bot.answerCallbackQuery(queryId, { text: "Withdrawal Approved!" });
-    bot.editMessageText(`✅ *WITHDRAWAL COMPLETED*\nAmount: ${amount} ETB deducted from User ID \`${targetUserId}\`.`, {
-      chat_id: query.message.chat.id,
-      message_id: query.message.message_id,
-      parse_mode: 'Markdown'
-    });
+      await bot.answerCallbackQuery(queryId, { text: "Withdrawal Approved!", show_alert: true });
+      await bot.editMessageText(`✅ *WITHDRAWAL COMPLETED*\nAmount: ${amount} ETB deducted from User ID \`${targetUserId}\`.`, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown'
+      });
 
-    bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
-  } 
-  else if (data.startsWith('wrj_')) {
-    processedCallbacks.add(data);
-    const parts = data.split('_');
-    const targetUserId = parts[1];
+      bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
+    } 
+    else if (data.startsWith('wrj_')) {
+      processedCallbacks.add(data);
+      const parts = data.split('_');
+      const targetUserId = parts[1];
 
-    bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!" });
-    bot.editMessageText(`❌ *WITHDRAWAL REJECTED*\nWithdrawal request for User ID \`${targetUserId}\` was declined.`, {
-      chat_id: query.message.chat.id,
-      message_id: query.message.message_id,
-      parse_mode: 'Markdown'
-    });
+      await bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!", show_alert: true });
+      await bot.editMessageText(`❌ *WITHDRAWAL REJECTED*\nWithdrawal request for User ID \`${targetUserId}\` was declined.`, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id,
+        parse_mode: 'Markdown'
+      });
 
-    bot.sendMessage(targetUserId, "❌ Your withdrawal request was declined.");
+      bot.sendMessage(targetUserId, "❌ Your withdrawal request was declined.");
+    }
+  } catch (err) {
+    console.error("Callback Execution Error:", err);
+    bot.answerCallbackQuery(queryId, { text: `❌ Error: ${err.message}`, show_alert: true });
   }
 });
 
