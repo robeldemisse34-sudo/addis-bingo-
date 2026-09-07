@@ -5,34 +5,41 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-// Initialize Firebase Admin
+// 1. Parse Firebase Service Account
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`
 });
 const db = admin.database();
 
-// Initialize Telegram Bot
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 
-// Webhook endpoint for Telegram
-app.post(`/bot${process.env.TELEGRAM_BOT_TOKEN}`, (req, res) => {
+// 2. Initialize Bot without polling (Express will process updates directly)
+const bot = new TelegramBot(token);
+
+// 3. Telegram Webhook Endpoint
+app.post(`/bot${token}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Inline Button Handler (Approve / Reject)
+// Health check endpoint for Render
+app.get('/', (req, res) => {
+  res.send('Addis Bingo Bot Server is Running');
+});
+
+// 4. Handle Inline Buttons (Approve / Reject)
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
 
-  // Always answer callback immediately to stop spinning loading icon
   try {
     await bot.answerCallbackQuery(query.id, { text: "Processing..." });
   } catch (err) {
-    console.error("Callback answer error:", err);
+    console.error("Callback error:", err);
   }
 
   if (data.startsWith('approve_')) {
@@ -54,7 +61,7 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// Main Message Handler
+// 5. Handle Start Command & Regular Messages
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
@@ -75,6 +82,5 @@ bot.on('message', async (msg) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log("Firebase Admin SDK connected successfully.");
+  console.log(`Server listening on port ${PORT}`);
 });
