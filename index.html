@@ -91,15 +91,14 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Auto-detect Telegram SDK user context
+    // Telegram Web App Initialization
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
     }
 
-    // Extract Telegram User ID dynamically or fallback to 8043202811
-    let tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : "8043202811";
+    let tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : "461465625";
 
     function showToast(msg) {
       const toast = document.getElementById("toastBanner");
@@ -121,40 +120,24 @@
       let activeGames = 0;
       let drawnNumbers = [];
 
-      // Comprehensive Deep Scanner for User Balance across Firebase paths
-      function deepScanUserBalance(uid) {
+      // Dynamic Realtime Balance Listener
+      function listenUserBalance(uid) {
         if (!uid) return;
 
-        const possiblePaths = [
-          `users/${uid}`,
-          `balances/${uid}`,
-          `players/${uid}`,
-          `wallets/${uid}`,
-          `accounts/${uid}`
-        ];
-
-        possiblePaths.forEach((path) => {
-          db.ref(path).on("value", (snapshot) => {
-            if (snapshot.exists()) {
-              const data = snapshot.val();
-              let extractedBalance = 0;
-
-              if (typeof data === "number" || typeof data === "string") {
-                extractedBalance = parseFloat(data);
-              } else if (typeof data === "object" && data !== null) {
-                extractedBalance = data.balance ?? data.wallet ?? data.amount ?? data.coins ?? 0;
-              }
-
-              if (extractedBalance > 0) {
-                walletDisplay.textContent = Number(extractedBalance).toFixed(2);
-              }
+        db.ref(`users/${uid}`).on("value", (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            let val = 0;
+            if (typeof data === "number") val = data;
+            else if (typeof data === "object" && data !== null) {
+              val = data.balance ?? data.wallet ?? 0;
             }
-          });
+            walletDisplay.textContent = Number(val).toFixed(2);
+          }
         });
       }
 
-      // Execute balance scan on start
-      deepScanUserBalance(tgUserId);
+      listenUserBalance(tgUserId);
 
       function renderGrid() {
         if (!grid) return;
@@ -255,7 +238,7 @@
       renderGrid();
       generatePreviewCard();
       if (refreshBtn) refreshBtn.addEventListener("click", () => { 
-        deepScanUserBalance(tgUserId);
+        listenUserBalance(tgUserId);
         renderGrid(); 
       });
     }
