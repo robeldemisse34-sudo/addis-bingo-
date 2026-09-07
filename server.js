@@ -10,7 +10,7 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-// Initialize Firebase Admin SDK using Render Environment Variable
+// Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -143,7 +143,6 @@ bot.on('message', async (msg) => {
 
     if (msg.photo) {
       delete userStates[chatId];
-      const reqId = Date.now();
       bot.sendMessage(chatId, "⏳ Your Telebirr screenshot receipt has been submitted to Admin for verification!", mainKeyboard);
 
       const photoId = msg.photo[msg.photo.length - 1].file_id;
@@ -157,8 +156,8 @@ bot.on('message', async (msg) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_PHOTO_${reqId}` },
-              { text: "❌ Reject", callback_data: `reject_${chatId}_${reqId}` }
+              { text: "✅ Approve Deposit", callback_data: `ap_${chatId}_${depositAmount}` },
+              { text: "❌ Reject", callback_data: `rj_${chatId}` }
             ]
           ]
         }
@@ -181,7 +180,6 @@ bot.on('message', async (msg) => {
     processedTransactions.add(txId);
     delete userStates[chatId];
 
-    const reqId = Date.now();
     bot.sendMessage(chatId, "⏳ Your Telebirr deposit verification request has been sent to Admin!", mainKeyboard);
 
     const adminMsg = `🚨 *NEW TELEBIRR DEPOSIT REQUEST*\n\n` +
@@ -195,8 +193,8 @@ bot.on('message', async (msg) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Approve Deposit", callback_data: `approve_${chatId}_${depositAmount}_${txId}_${reqId}` },
-            { text: "❌ Reject", callback_data: `reject_${chatId}_${reqId}` }
+            { text: "✅ Approve Deposit", callback_data: `ap_${chatId}_${depositAmount}` },
+            { text: "❌ Reject", callback_data: `rj_${chatId}` }
           ]
         ]
       }
@@ -219,7 +217,7 @@ bot.on('message', async (msg) => {
     }
 
     userStates[chatId] = { step: 'AWAITING_WITHDRAW_PHONE', amount: amount };
-    return bot.sendMessage(chatId, `m Withdrawal Amount: *${amount} ETB*\n\nPlease enter your Telebirr Phone Number (e.g., \`0912345678\`):`, { parse_mode: 'Markdown' });
+    return bot.sendMessage(chatId, `🏧 Withdrawal Amount: *${amount} ETB*\n\nPlease enter your Telebirr Phone Number (e.g., \`0912345678\`):`, { parse_mode: 'Markdown' });
   }
 
   if (userStates[chatId] && userStates[chatId].step === 'AWAITING_WITHDRAW_PHONE') {
@@ -233,7 +231,6 @@ bot.on('message', async (msg) => {
     delete userStates[chatId];
 
     const currentBalance = await getBalance(chatId);
-    const reqId = Date.now();
     bot.sendMessage(chatId, `⏳ Your withdrawal request of *${withdrawAmount} ETB* to *${phone}* has been sent to Admin.`, { parse_mode: 'Markdown', ...mainKeyboard });
 
     const adminMsg = `🏧 *NEW WITHDRAWAL REQUEST*\n\n` +
@@ -248,8 +245,8 @@ bot.on('message', async (msg) => {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Confirm Paid & Deduct", callback_data: `wdapprove_${chatId}_${withdrawAmount}_${reqId}` },
-            { text: "❌ Reject", callback_data: `wdreject_${chatId}_${reqId}` }
+            { text: "✅ Confirm Paid & Deduct", callback_data: `wap_${chatId}_${withdrawAmount}` },
+            { text: "❌ Reject", callback_data: `wrj_${chatId}` }
           ]
         ]
       }
@@ -336,28 +333,28 @@ bot.on('callback_query', async (query) => {
     return bot.answerCallbackQuery(queryId, { text: "⚠️ This request has already been processed!", show_alert: true });
   }
 
-  if (data.startsWith('approve_')) {
+  // Short callback handler for deposit approval (`ap_USERID_AMOUNT`)
+  if (data.startsWith('ap_')) {
     processedCallbacks.add(data);
-    
-    // Fixed string parsing for callback data
     const parts = data.split('_');
     const targetUserId = parts[1];
     const amount = parseFloat(parts[2]) || 0;
-    const txId = parts[3] || 'N/A';
 
     const currentBal = await getBalance(targetUserId);
     const newBal = currentBal + amount;
     await setBalance(targetUserId, newBal);
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Approved!" });
-    bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\` (Tx: ${txId})`, {
+    bot.editMessageText(`✅ *APPROVED DEPOSIT*\nAmount: ${amount} ETB added to User ID \`${targetUserId}\``, {
       chat_id: ADMIN_CHAT_ID,
       message_id: query.message.message_id,
       parse_mode: 'Markdown'
     });
 
     bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
-  } else if (data.startsWith('reject_')) {
+  } 
+  // Short callback handler for deposit rejection (`rj_USERID`)
+  else if (data.startsWith('rj_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
     const targetUserId = parts[1];
@@ -370,7 +367,9 @@ bot.on('callback_query', async (query) => {
     });
 
     bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
-  } else if (data.startsWith('wdapprove_')) {
+  } 
+  // Short callback handler for withdrawal approval (`wap_USERID_AMOUNT`)
+  else if (data.startsWith('wap_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
     const targetUserId = parts[1];
@@ -388,7 +387,9 @@ bot.on('callback_query', async (query) => {
     });
 
     bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
-  } else if (data.startsWith('wdreject_')) {
+  } 
+  // Short callback handler for withdrawal rejection (`wrj_USERID`)
+  else if (data.startsWith('wrj_')) {
     processedCallbacks.add(data);
     const parts = data.split('_');
     const targetUserId = parts[1];
