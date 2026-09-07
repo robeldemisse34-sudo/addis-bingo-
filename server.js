@@ -219,7 +219,7 @@ bot.on('message', async (msg) => {
     }
 
     userStates[chatId] = { step: 'AWAITING_WITHDRAW_PHONE', amount: amount };
-    return bot.sendMessage(chatId, `🏧 Withdrawal Amount: *${amount} ETB*\n\nPlease enter your Telebirr Phone Number (e.g., \`0912345678\`):`, { parse_mode: 'Markdown' });
+    return bot.sendMessage(chatId, `m Withdrawal Amount: *${amount} ETB*\n\nPlease enter your Telebirr Phone Number (e.g., \`0912345678\`):`, { parse_mode: 'Markdown' });
   }
 
   if (userStates[chatId] && userStates[chatId].step === 'AWAITING_WITHDRAW_PHONE') {
@@ -338,8 +338,12 @@ bot.on('callback_query', async (query) => {
 
   if (data.startsWith('approve_')) {
     processedCallbacks.add(data);
-    const [, targetUserId, amountStr, txId] = data.split('_');
-    const amount = parseFloat(amountStr) || 0;
+    
+    // Fixed string parsing for callback data
+    const parts = data.split('_');
+    const targetUserId = parts[1];
+    const amount = parseFloat(parts[2]) || 0;
+    const txId = parts[3] || 'N/A';
 
     const currentBal = await getBalance(targetUserId);
     const newBal = currentBal + amount;
@@ -355,7 +359,8 @@ bot.on('callback_query', async (query) => {
     bot.sendMessage(targetUserId, `🎉 *Deposit Approved!*\n\n💰 *${amount} ETB* has been added to your balance.\nNew Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('reject_')) {
     processedCallbacks.add(data);
-    const [, targetUserId] = data.split('_');
+    const parts = data.split('_');
+    const targetUserId = parts[1];
 
     bot.answerCallbackQuery(queryId, { text: "Deposit Rejected!" });
     bot.editMessageText(`❌ *REJECTED DEPOSIT*\nDeposit request for User ID \`${targetUserId}\` was declined.`, {
@@ -367,8 +372,9 @@ bot.on('callback_query', async (query) => {
     bot.sendMessage(targetUserId, "❌ Your deposit request was rejected.");
   } else if (data.startsWith('wdapprove_')) {
     processedCallbacks.add(data);
-    const [, targetUserId, amountStr] = data.split('_');
-    const amount = parseFloat(amountStr) || 0;
+    const parts = data.split('_');
+    const targetUserId = parts[1];
+    const amount = parseFloat(parts[2]) || 0;
 
     const currentBal = await getBalance(targetUserId);
     const newBal = Math.max(0, currentBal - amount);
@@ -384,7 +390,8 @@ bot.on('callback_query', async (query) => {
     bot.sendMessage(targetUserId, `✅ *Withdrawal Successful!*\n\n💸 *${amount} ETB* sent to your Telebirr account.\nRemaining Balance: *${newBal} ETB*`, { parse_mode: 'Markdown' });
   } else if (data.startsWith('wdreject_')) {
     processedCallbacks.add(data);
-    const [, targetUserId] = data.split('_');
+    const parts = data.split('_');
+    const targetUserId = parts[1];
 
     bot.answerCallbackQuery(queryId, { text: "Withdrawal Rejected!" });
     bot.editMessageText(`❌ *WITHDRAWAL REJECTED*\nWithdrawal request for User ID \`${targetUserId}\` was declined.`, {
