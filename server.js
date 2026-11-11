@@ -18,15 +18,15 @@ const db = admin.database();
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 
-// Initialize bot without polling (we use webhooks)
-const bot = new TelegramBot(token);
+// CRITICAL FIX: Pass { polling: false } so webhooks work correctly with Express
+const bot = new TelegramBot(token, { polling: false });
 
-// Explicitly set the webhook URL for Render
+// Set the webhook explicitly
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "https://addis-bingo-bot-v2.onrender.com";
 bot.setWebHook(`${RENDER_URL}/bot${token}`).then(() => {
-  console.log(`Webhook successfully set to: ${RENDER_URL}/bot${token}`);
+  console.log(`Webhook set to: ${RENDER_URL}/bot${token}`);
 }).catch(err => {
-  console.error("Failed to set webhook:", err);
+  console.error("Webhook setup error:", err);
 });
 
 // Set menu commands
@@ -41,9 +41,8 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/style.css', (req, res) => res.sendFile(path.join(__dirname, 'style.css')));
 app.get('/game.js', (req, res) => res.sendFile(path.join(__dirname, 'game.js')));
 
-// Receive updates from Telegram
+// Webhook endpoint
 app.post(`/bot${token}`, (req, res) => {
-  console.log("Incoming Telegram update:", JSON.stringify(req.body));
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
@@ -55,7 +54,7 @@ bot.on('message', async (msg) => {
     const text = msg.text ? msg.text.trim().toLowerCase() : '';
     const userId = String(msg.from.id);
 
-    console.log(`Processing message: "${text}" from user ID: ${userId}`);
+    console.log(`Message received: "${text}" from ${userId}`);
 
     // Handle Contact Sharing
     if (msg.contact) {
@@ -114,7 +113,7 @@ bot.on('message', async (msg) => {
     }
 
   } catch (err) {
-    console.error("Error handling message:", err);
+    console.error("Error in message handler:", err);
   }
 });
 
