@@ -80,6 +80,7 @@ bot.on('callback_query', async (query) => {
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
+  const userId = String(msg.from.id);
 
   if (text === '/start') {
     return bot.sendMessage(chatId, "Welcome to Addis Bingo!", {
@@ -95,7 +96,27 @@ bot.on('message', async (msg) => {
     });
   }
 
-  if (text === 'Register 📝' || text === 'Play Bingo 🎰') {
+  // Handle Registration Logic
+  if (text === 'Register 📝') {
+    const userRef = db.ref(`users/${userId}`);
+    userRef.once('value', async (snapshot) => {
+      if (!snapshot.exists()) {
+        await userRef.set({
+          balance: 0,
+          bonus: 0,
+          registeredAt: Date.now(),
+          username: msg.from.username || msg.from.first_name || "User"
+        });
+        await bot.sendMessage(chatId, "🎉 Registration successful! Your account has been created with 0.00 ETB balance.");
+      } else {
+        await bot.sendMessage(chatId, "ℹ️ You are already registered in the system!");
+      }
+    });
+    return;
+  }
+
+  // Handle Play Bingo
+  if (text === 'Play Bingo 🎰') {
     return bot.sendMessage(chatId, "Tap below to play:", {
       reply_markup: {
         inline_keyboard: [
