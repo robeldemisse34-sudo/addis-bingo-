@@ -95,14 +95,18 @@ bot.on('message', async (msg) => {
     });
   }
 
-  if (text === 'Register 📝' || text === 'Play Bingo 🎰' || text === 'Play Spin 🎰') {
-    return bot.sendMessage(chatId, "Tap below to launch Addis Bingo:", {
+  if (text === 'Register 📝' || text === 'Play Bingo 🎰') {
+    return bot.sendMessage(chatId, "Tap below to play:", {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🚀 Launch Game", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
+          [{ text: "Play", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
         ]
       }
     });
+  }
+
+  if (text === 'Play Spin 🎰') {
+    return bot.sendMessage(chatId, "🎰 Spin game is coming soon!");
   }
 });
 
