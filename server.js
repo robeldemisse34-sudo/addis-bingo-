@@ -82,6 +82,30 @@ bot.on('message', async (msg) => {
   const text = msg.text;
   const userId = String(msg.from.id);
 
+  // Handle Shared Contact (When user taps the share contact button)
+  if (msg.contact) {
+    const phoneNumber = msg.contact.phone_number;
+    const userRef = db.ref(`users/${userId}`);
+    
+    await userRef.update({
+      phone: phoneNumber,
+      registeredAt: Date.now(),
+      username: msg.from.username || msg.from.first_name || "User"
+    });
+
+    return bot.sendMessage(chatId, `🎉 Registration complete! Phone number saved: ${phoneNumber}`, {
+      reply_markup: {
+        keyboard: [
+          [{ text: "Play Bingo 🎰" }, { text: "Play Spin 🎰" }],
+          [{ text: "Register 📝" }, { text: "Deposit 💵" }, { text: "Withdraw 🏧" }],
+          [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
+          [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
+        ],
+        resize_keyboard: true
+      }
+    });
+  }
+
   if (text === '/start') {
     return bot.sendMessage(chatId, "Welcome to Addis Bingo!", {
       reply_markup: {
@@ -96,23 +120,32 @@ bot.on('message', async (msg) => {
     });
   }
 
-  // 1. Register Button
+  // 1. Register Button - Asks user to share contact
   if (text === 'Register 📝') {
-    const userRef = db.ref(`users/${userId}`);
-    userRef.once('value', async (snapshot) => {
-      if (!snapshot.exists()) {
-        await userRef.set({
-          balance: 0,
-          bonus: 0,
-          registeredAt: Date.now(),
-          username: msg.from.username || msg.from.first_name || "User"
-        });
-        await bot.sendMessage(chatId, "🎉 Registration successful! Your account has been created with 0.00 ETB balance.");
-      } else {
-        await bot.sendMessage(chatId, "ℹ️ You are already registered in the system!");
+    return bot.sendMessage(chatId, "📱 Please tap the button below to share your phone number and complete registration:", {
+      reply_markup: {
+        keyboard: [
+          [{ text: "📱 Share Contact", request_contact: true }],
+          [{ text: "🔙 Back to Menu" }]
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: true
       }
     });
-    return;
+  }
+
+  if (text === '🔙 Back to Menu') {
+    return bot.sendMessage(chatId, "Main Menu:", {
+      reply_markup: {
+        keyboard: [
+          [{ text: "Play Bingo 🎰" }, { text: "Play Spin 🎰" }],
+          [{ text: "Register 📝" }, { text: "Deposit 💵" }, { text: "Withdraw 🏧" }],
+          [{ text: "Check Balance 💰" }, { text: "Contact Support 📞" }],
+          [{ text: "Instruction 📖" }, { text: "Invite ✉️" }]
+        ],
+        resize_keyboard: true
+      }
+    });
   }
 
   // 2. Play Bingo Button
@@ -163,7 +196,7 @@ bot.on('message', async (msg) => {
 
   // 9. Invite Button
   if (text === 'Invite ✉️') {
-    const botUsername = "addis_bingo_bot"; // You can change this to your actual bot username
+    const botUsername = "addis_bingo_bot";
     return bot.sendMessage(chatId, `✉️ Invite your friends to Addis Bingo and earn bonuses!\n\nShare your referral link: https://t.me/${botUsername}`);
   }
 });
