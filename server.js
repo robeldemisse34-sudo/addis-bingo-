@@ -1,13 +1,11 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 
 const app = express();
 app.use(express.json());
-
-// Serve static frontend files directly from the root folder (where index.html is)
-app.use(express.static(__dirname));
 
 // Firebase Setup
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -21,9 +19,25 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 const bot = new TelegramBot(token);
 
-// Serve the WebApp HTML on root route
+// Serve index.html directly and handle css/js files from root
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  const filePath = path.join(__dirname, 'index.html');
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+      res.status(404).send("Index.html not found on server root");
+    } else {
+      res.send(data);
+    }
+  });
+});
+
+// Serve style.css and game.js directly if requested
+app.get('/style.css', (req, res) => {
+  res.sendFile(path.join(__dirname, 'style.css'));
+});
+
+app.get('/game.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'game.js'));
 });
 
 // Telegram Webhook Endpoint
