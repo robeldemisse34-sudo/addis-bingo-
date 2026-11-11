@@ -96,7 +96,7 @@ bot.on('message', async (msg) => {
     });
   }
 
-  // Handle Registration Logic
+  // 1. Register Button
   if (text === 'Register 📝') {
     const userRef = db.ref(`users/${userId}`);
     userRef.once('value', async (snapshot) => {
@@ -115,7 +115,7 @@ bot.on('message', async (msg) => {
     return;
   }
 
-  // Handle Play Bingo
+  // 2. Play Bingo Button
   if (text === 'Play Bingo 🎰') {
     return bot.sendMessage(chatId, "Tap below to play:", {
       reply_markup: {
@@ -126,8 +126,45 @@ bot.on('message', async (msg) => {
     });
   }
 
+  // 3. Play Spin Button
   if (text === 'Play Spin 🎰') {
     return bot.sendMessage(chatId, "🎰 Spin game is coming soon!");
+  }
+
+  // 4. Deposit Button
+  if (text === 'Deposit 💵') {
+    return bot.sendMessage(chatId, "💳 To deposit funds, please contact our support or send your transaction receipt to the admin to top up your balance.");
+  }
+
+  // 5. Withdraw Button
+  if (text === 'Withdraw 🏧') {
+    return bot.sendMessage(chatId, "🏧 To withdraw your winnings, ensure your balance is sufficient and contact support with your account details.");
+  }
+
+  // 6. Check Balance Button
+  if (text === 'Check Balance 💰') {
+    const userRef = db.ref(`users/${userId}/balance`);
+    userRef.once('value', (snapshot) => {
+      const balance = snapshot.exists() ? snapshot.val() : 0;
+      bot.sendMessage(chatId, `💰 Your current balance is: ${Number(balance).toFixed(2)} ETB`);
+    });
+    return;
+  }
+
+  // 7. Contact Support Button
+  if (text === 'Contact Support 📞') {
+    return bot.sendMessage(chatId, "📞 For any issues or questions, please contact our admin support team.");
+  }
+
+  // 8. Instruction Button
+  if (text === 'Instruction 📖') {
+    return bot.sendMessage(chatId, "📖 **How to Play Addis Bingo:**\n1. Register an account.\n2. Tap Play Bingo to open the game.\n3. Select your card number and start playing to win!");
+  }
+
+  // 9. Invite Button
+  if (text === 'Invite ✉️') {
+    const botUsername = "addis_bingo_bot"; // You can change this to your actual bot username
+    return bot.sendMessage(chatId, `✉️ Invite your friends to Addis Bingo and earn bonuses!\n\nShare your referral link: https://t.me/${botUsername}`);
   }
 });
 
