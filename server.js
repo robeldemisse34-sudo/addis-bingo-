@@ -55,25 +55,59 @@ bot.on('message', async (msg) => {
   const text = msg.text;
   const userId = String(msg.from.id);
 
+  // 1. Handle Contact Sharing (When user taps Share Contact button)
   if (msg.contact) {
     const phoneNumber = msg.contact.phone_number;
-    await db.ref(`users/${userId}`).update({
-      phone: phoneNumber,
-      registeredAt: Date.now(),
-      username: msg.from.username || msg.from.first_name || "User"
-    });
+    const userRef = db.ref(`users/${userId}`);
     
-    const balanceRef = db.ref(`users/${userId}/balance`);
-    const snap = await balanceRef.once('value');
-    if (!snap.exists()) await balanceRef.set(0);
+    try {
+      const snapshot = await userRef.once('value');
+      const userData = snapshot.val();
 
-    return bot.sendMessage(chatId, "You are registered successfully!", mainMenu);
+      if (userData && userData.phone) {
+        // Already registered
+        await bot.sendMessage(chatId, "You are already registered!", mainMenu);
+      } else {
+        // New registration
+        await userRef.update({
+          phone: phoneNumber,
+          registeredAt: Date.now(),
+          username: msg.from.username || msg.from.first_name || "User",
+          balance: userData && userData.balance !== undefined ? userData.balance : 0
+        });
+        await bot.sendMessage(chatId, "You are registered successfully!", mainMenu);
+      }
+    } catch (err) {
+      console.error("Firebase error on contact save:", err);
+      await bot.sendMessage(chatId, "Registration error. Please try again.", mainMenu);
+    }
+    return;
   }
 
-  if (text === '/start' || text === 'Back to Menu') {
-    return bot.sendMessage(chatId, "Welcome to Addis Bingo!", mainMenu);
+  // 2. /start command
+  if (text === '/start') {
+    const snapshot = await db.ref(`users/${userId}`).once('value');
+    const userData = snapshot.val();
+
+    if (!userData || !userData.phone) {
+      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register first by tapping the button below:", {
+        reply_markup: {
+          keyboard: [
+            [{ text: "Register" }]
+          ],
+          resize_keyboard: true
+        }
+      });
+    } else {
+      return bot.sendMessage(chatId, "Welcome back to Addis Bingo!", mainMenu);
+    }
   }
 
+  if (text === 'Back to Menu') {
+    return bot.sendMessage(chatId, "Main Menu:", mainMenu);
+  }
+
+  // 3. Register Button
   if (text === 'Register') {
     return bot.sendMessage(chatId, "Please tap the button below to share your contact and complete registration:", {
       reply_markup: {
@@ -87,7 +121,22 @@ bot.on('message', async (msg) => {
     });
   }
 
+  // 4. Play Bingo Button
   if (text === 'Play Bingo') {
+    const snapshot = await db.ref(`users/${userId}`).once('value');
+    const userData = snapshot.val();
+
+    if (!userData || !userData.phone) {
+      return bot.sendMessage(chatId, "⚠️ You must register your account before playing! Please tap Register below:", {
+        reply_markup: {
+          keyboard: [
+            [{ text: "Register" }]
+          ],
+          resize_keyboard: true
+        }
+      });
+    }
+
     return bot.sendMessage(chatId, "Tap below to play:", {
       reply_markup: {
         inline_keyboard: [
