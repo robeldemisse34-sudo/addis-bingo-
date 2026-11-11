@@ -56,6 +56,9 @@ bot.on('message', async (msg) => {
   const text = msg.text ? msg.text.trim() : '';
   const userId = String(msg.from.id);
 
+  // Helper object to remove keyboards completely
+  const clearKeyboard = { reply_markup: { remove_keyboard: true } };
+
   // 1. Handle Contact Sharing
   if (msg.contact) {
     const phoneNumber = msg.contact.phone_number;
@@ -66,9 +69,7 @@ bot.on('message', async (msg) => {
       const userData = snapshot.val();
 
       if (userData && userData.phone) {
-        return bot.sendMessage(chatId, "You are already registered!", {
-          reply_markup: { remove_keyboard: true }
-        });
+        return bot.sendMessage(chatId, "You are already registered!", clearKeyboard);
       } else {
         await userRef.update({
           phone: phoneNumber,
@@ -76,25 +77,21 @@ bot.on('message', async (msg) => {
           username: msg.from.username || msg.from.first_name || "User",
           balance: userData && userData.balance !== undefined ? userData.balance : 0
         });
-        return bot.sendMessage(chatId, "You are registered successfully!", {
-          reply_markup: { remove_keyboard: true }
-        });
+        return bot.sendMessage(chatId, "You are registered successfully!", clearKeyboard);
       }
     } catch (err) {
       console.error("Firebase error on contact save:", err);
-      return bot.sendMessage(chatId, "Registration error. Please try again.", {
-        reply_markup: { remove_keyboard: true }
-      });
+      return bot.sendMessage(chatId, "Registration error. Please try again.", clearKeyboard);
     }
   }
 
-  // 2. /start command (Forces removal of old buttons)
+  // 2. /start command
   if (text === '/start') {
     const snapshot = await db.ref(`users/${userId}`).once('value');
     const userData = snapshot.val();
 
     if (!userData || !userData.phone) {
-      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register your account by tapping the button below:", {
+      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register your account by sharing your contact:", {
         reply_markup: {
           keyboard: [
             [{ text: "Share Contact", request_contact: true }]
@@ -104,9 +101,7 @@ bot.on('message', async (msg) => {
         }
       });
     } else {
-      return bot.sendMessage(chatId, "Welcome back to Addis Bingo! Tap the Menu button to view options.", {
-        reply_markup: { remove_keyboard: true }
-      });
+      return bot.sendMessage(chatId, "Welcome back to Addis Bingo! Tap the Menu button to view options.", clearKeyboard);
     }
   }
 
@@ -145,33 +140,34 @@ bot.on('message', async (msg) => {
         inline_keyboard: [
           [{ text: "Play", web_app: { url: "https://addis-bingo-bot-v2.onrender.com" } }]
         ]
-      }
+      },
+      ...clearKeyboard.reply_markup
     });
   }
 
-  // Other commands
+  // Other commands (All use clearKeyboard to wipe the button)
   if (text === '/playspin' || text === 'Play Spin') {
-    return bot.sendMessage(chatId, "Spin game is coming soon!");
+    return bot.sendMessage(chatId, "Spin game is coming soon!", clearKeyboard);
   }
   if (text === '/deposit' || text === 'Deposit') {
-    return bot.sendMessage(chatId, "To deposit funds, please contact support or send your transaction receipt to the admin.");
+    return bot.sendMessage(chatId, "To deposit funds, please contact support or send your transaction receipt to the admin.", clearKeyboard);
   }
   if (text === '/withdraw' || text === 'Withdraw') {
-    return bot.sendMessage(chatId, "To withdraw your winnings, ensure your balance is sufficient and contact support.");
+    return bot.sendMessage(chatId, "To withdraw your winnings, ensure your balance is sufficient and contact support.", clearKeyboard);
   }
   if (text === '/balance' || text === 'Check Balance') {
     const snap = await db.ref(`users/${userId}/balance`).once('value');
     const balance = snap.exists() ? snap.val() : 0;
-    return bot.sendMessage(chatId, `Your current balance is: ${Number(balance).toFixed(2)} ETB`);
+    return bot.sendMessage(chatId, `Your current balance is: ${Number(balance).toFixed(2)} ETB`, clearKeyboard);
   }
   if (text === '/support' || text === 'Contact Support') {
-    return bot.sendMessage(chatId, "For any issues or questions, please contact our support team.");
+    return bot.sendMessage(chatId, "For any issues or questions, please contact our support team.", clearKeyboard);
   }
   if (text === '/instruction' || text === 'Instruction') {
-    return bot.sendMessage(chatId, "How to Play:\n1. Register your contact via /register.\n2. Tap /playbingo to open the app.\n3. Choose your card and start playing!");
+    return bot.sendMessage(chatId, "How to Play:\n1. Register your contact via /register.\n2. Tap /playbingo to open the app.\n3. Choose your card and start playing!", clearKeyboard);
   }
-  if (text === '/invite' || text === 'Invite') {
-    return bot.sendMessage(chatId, "Invite your friends using your link: https://t.me/addis_bingo_bot");
+  if (text === 'Invite') {
+    return bot.sendMessage(chatId, "Invite your friends using your link: https://t.me/addis_bingo_bot", clearKeyboard);
   }
 });
 
