@@ -18,18 +18,18 @@ const db = admin.database();
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 
-// CRITICAL FIX: Pass { polling: false } so webhooks work correctly with Express
+// Initialize bot with polling false for webhooks
 const bot = new TelegramBot(token, { polling: false });
 
-// Set the webhook explicitly
+// Register webhook on startup
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "https://addis-bingo-bot-v2.onrender.com";
 bot.setWebHook(`${RENDER_URL}/bot${token}`).then(() => {
-  console.log(`Webhook set to: ${RENDER_URL}/bot${token}`);
+  console.log(`Webhook successfully set to: ${RENDER_URL}/bot${token}`);
 }).catch(err => {
   console.error("Webhook setup error:", err);
 });
 
-// Set menu commands
+// Set Bot Menu Commands
 bot.setMyCommands([
   { command: 'start', description: 'Start the bot' },
   { command: 'playbingo', description: 'Play Bingo' },
@@ -37,24 +37,30 @@ bot.setMyCommands([
   { command: 'balance', description: 'Check balance' }
 ]);
 
+// Serve static frontend files
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/style.css', (req, res) => res.sendFile(path.join(__dirname, 'style.css')));
 app.get('/game.js', (req, res) => res.sendFile(path.join(__dirname, 'game.js')));
 
-// Webhook endpoint
+// Webhook endpoint to catch Telegram updates
 app.post(`/bot${token}`, (req, res) => {
-  bot.processUpdate(req.body);
+  console.log("Webhook update received:", JSON.stringify(req.body));
+  try {
+    bot.processUpdate(req.body);
+  } catch (err) {
+    console.error("Error processing update:", err);
+  }
   res.sendStatus(200);
 });
 
-// Message Listener
+// Handle incoming messages
 bot.on('message', async (msg) => {
   try {
     const chatId = msg.chat.id;
     const text = msg.text ? msg.text.trim().toLowerCase() : '';
     const userId = String(msg.from.id);
 
-    console.log(`Message received: "${text}" from ${userId}`);
+    console.log(`Processing message text: "${text}" from user: ${userId}`);
 
     // Handle Contact Sharing
     if (msg.contact) {
@@ -65,12 +71,16 @@ bot.on('message', async (msg) => {
       if (snap.exists() && snap.val().phone) {
         return bot.sendMessage(chatId, "You are already registered!", { reply_markup: { remove_keyboard: true } });
       } else {
-        await userRef.update({ phone: phoneNumber, registeredAt: Date.now(), balance: 0 });
+        await userRef.update({ 
+          phone: phoneNumber, 
+          registeredAt: Date.now(), 
+          balance: snap.exists() && snap.val().balance !== undefined ? snap.val().balance : 0 
+        });
         return bot.sendMessage(chatId, "You are registered successfully!", { reply_markup: { remove_keyboard: true } });
       }
     }
 
-    // Handle Start / Register
+    // Handle /start or /register
     if (text.startsWith('/start') || text.startsWith('/register')) {
       const snap = await db.ref(`users/${userId}`).once('value');
       if (!snap.exists() || !snap.val().phone) {
@@ -86,7 +96,7 @@ bot.on('message', async (msg) => {
       }
     }
 
-    // Handle Play Bingo
+    // Handle /playbingo
     if (text.startsWith('/playbingo')) {
       const snap = await db.ref(`users/${userId}`).once('value');
       if (!snap.exists() || !snap.val().phone) {
@@ -105,7 +115,7 @@ bot.on('message', async (msg) => {
       });
     }
 
-    // Handle Balance
+    // Handle /balance
     if (text.startsWith('/balance')) {
       const snap = await db.ref(`users/${userId}/balance`).once('value');
       const balance = snap.exists() ? snap.val() : 0;
@@ -113,8 +123,10 @@ bot.on('message', async (msg) => {
     }
 
   } catch (err) {
-    console.error("Error in message handler:", err);
+    console.error("Error in bot.on('message'):", err);
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
