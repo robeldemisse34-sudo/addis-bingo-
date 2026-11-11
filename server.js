@@ -19,7 +19,7 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 const bot = new TelegramBot(token);
 
-// Register the popup Menu commands so they appear when clicking the blue "Menu" button
+// Register popup commands for the Menu button
 bot.setMyCommands([
   { command: 'start', description: 'Start the bot' },
   { command: 'playbingo', description: 'Start playing Bingo' },
@@ -66,7 +66,9 @@ bot.on('message', async (msg) => {
       const userData = snapshot.val();
 
       if (userData && userData.phone) {
-        return bot.sendMessage(chatId, "You are already registered!");
+        return bot.sendMessage(chatId, "You are already registered!", {
+          reply_markup: { remove_keyboard: true }
+        });
       } else {
         await userRef.update({
           phone: phoneNumber,
@@ -74,21 +76,25 @@ bot.on('message', async (msg) => {
           username: msg.from.username || msg.from.first_name || "User",
           balance: userData && userData.balance !== undefined ? userData.balance : 0
         });
-        return bot.sendMessage(chatId, "You are registered successfully!");
+        return bot.sendMessage(chatId, "You are registered successfully!", {
+          reply_markup: { remove_keyboard: true }
+        });
       }
     } catch (err) {
       console.error("Firebase error on contact save:", err);
-      return bot.sendMessage(chatId, "Registration error. Please try again.");
+      return bot.sendMessage(chatId, "Registration error. Please try again.", {
+        reply_markup: { remove_keyboard: true }
+      });
     }
   }
 
-  // 2. /start command
+  // 2. /start command (Forces removal of old buttons)
   if (text === '/start') {
     const snapshot = await db.ref(`users/${userId}`).once('value');
     const userData = snapshot.val();
 
     if (!userData || !userData.phone) {
-      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register your account first:", {
+      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register your account by tapping the button below:", {
         reply_markup: {
           keyboard: [
             [{ text: "Share Contact", request_contact: true }]
@@ -98,7 +104,9 @@ bot.on('message', async (msg) => {
         }
       });
     } else {
-      return bot.sendMessage(chatId, "Welcome back to Addis Bingo! Tap the blue Menu button below to view available actions.");
+      return bot.sendMessage(chatId, "Welcome back to Addis Bingo! Tap the Menu button to view options.", {
+        reply_markup: { remove_keyboard: true }
+      });
     }
   }
 
@@ -141,39 +149,27 @@ bot.on('message', async (msg) => {
     });
   }
 
-  // 5. /playspin command
+  // Other commands
   if (text === '/playspin' || text === 'Play Spin') {
     return bot.sendMessage(chatId, "Spin game is coming soon!");
   }
-
-  // 6. /deposit command
   if (text === '/deposit' || text === 'Deposit') {
     return bot.sendMessage(chatId, "To deposit funds, please contact support or send your transaction receipt to the admin.");
   }
-
-  // 7. /withdraw command
   if (text === '/withdraw' || text === 'Withdraw') {
     return bot.sendMessage(chatId, "To withdraw your winnings, ensure your balance is sufficient and contact support.");
   }
-
-  // 8. /balance command
   if (text === '/balance' || text === 'Check Balance') {
     const snap = await db.ref(`users/${userId}/balance`).once('value');
     const balance = snap.exists() ? snap.val() : 0;
     return bot.sendMessage(chatId, `Your current balance is: ${Number(balance).toFixed(2)} ETB`);
   }
-
-  // 9. /support command
   if (text === '/support' || text === 'Contact Support') {
     return bot.sendMessage(chatId, "For any issues or questions, please contact our support team.");
   }
-
-  // 10. /instruction command
   if (text === '/instruction' || text === 'Instruction') {
     return bot.sendMessage(chatId, "How to Play:\n1. Register your contact via /register.\n2. Tap /playbingo to open the app.\n3. Choose your card and start playing!");
   }
-
-  // 11. /invite command
   if (text === '/invite' || text === 'Invite') {
     return bot.sendMessage(chatId, "Invite your friends using your link: https://t.me/addis_bingo_bot");
   }
