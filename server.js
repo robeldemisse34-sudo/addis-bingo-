@@ -19,18 +19,19 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = process.env.PORT || 10000;
 const bot = new TelegramBot(token);
 
-// Main Menu Keyboard Layout
-const mainMenu = {
-  reply_markup: {
-    keyboard: [
-      [{ text: "Play Bingo" }, { text: "Play Spin" }],
-      [{ text: "Register" }, { text: "Deposit" }, { text: "Withdraw" }],
-      [{ text: "Check Balance" }, { text: "Contact Support" }],
-      [{ text: "Instruction" }, { text: "Invite" }]
-    ],
-    resize_keyboard: true
-  }
-};
+// Register the popup Menu commands so they appear when clicking the blue "Menu" button
+bot.setMyCommands([
+  { command: 'start', description: 'Start the bot' },
+  { command: 'playbingo', description: 'Start playing Bingo' },
+  { command: 'playspin', description: 'Start playing Spin' },
+  { command: 'register', description: 'Register for an account' },
+  { command: 'balance', description: 'Check account balance' },
+  { command: 'deposit', description: 'Deposit funds' },
+  { command: 'withdraw', description: 'Withdraw winnings' },
+  { command: 'support', description: 'Contact support' },
+  { command: 'instruction', description: 'How to play' },
+  { command: 'invite', description: 'Invite friends' }
+]);
 
 // Serve static files
 app.get('/', (req, res) => {
@@ -49,13 +50,13 @@ app.post(`/bot${token}`, (req, res) => {
   res.sendStatus(200);
 });
 
-// Message Handler
+// Message & Command Handler
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
+  const text = msg.text ? msg.text.trim() : '';
   const userId = String(msg.from.id);
 
-  // 1. Handle Contact Sharing (When user taps Share Contact button)
+  // 1. Handle Contact Sharing
   if (msg.contact) {
     const phoneNumber = msg.contact.phone_number;
     const userRef = db.ref(`users/${userId}`);
@@ -65,23 +66,20 @@ bot.on('message', async (msg) => {
       const userData = snapshot.val();
 
       if (userData && userData.phone) {
-        // Already registered
-        await bot.sendMessage(chatId, "You are already registered!", mainMenu);
+        return bot.sendMessage(chatId, "You are already registered!");
       } else {
-        // New registration
         await userRef.update({
           phone: phoneNumber,
           registeredAt: Date.now(),
           username: msg.from.username || msg.from.first_name || "User",
           balance: userData && userData.balance !== undefined ? userData.balance : 0
         });
-        await bot.sendMessage(chatId, "You are registered successfully!", mainMenu);
+        return bot.sendMessage(chatId, "You are registered successfully!");
       }
     } catch (err) {
       console.error("Firebase error on contact save:", err);
-      await bot.sendMessage(chatId, "Registration error. Please try again.", mainMenu);
+      return bot.sendMessage(chatId, "Registration error. Please try again.");
     }
-    return;
   }
 
   // 2. /start command
@@ -90,30 +88,26 @@ bot.on('message', async (msg) => {
     const userData = snapshot.val();
 
     if (!userData || !userData.phone) {
-      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register first by tapping the button below:", {
+      return bot.sendMessage(chatId, "Welcome to Addis Bingo! Please register your account first:", {
         reply_markup: {
           keyboard: [
-            [{ text: "Register" }]
+            [{ text: "Share Contact", request_contact: true }]
           ],
-          resize_keyboard: true
+          resize_keyboard: true,
+          one_time_keyboard: true
         }
       });
     } else {
-      return bot.sendMessage(chatId, "Welcome back to Addis Bingo!", mainMenu);
+      return bot.sendMessage(chatId, "Welcome back to Addis Bingo! Tap the blue Menu button below to view available actions.");
     }
   }
 
-  if (text === 'Back to Menu') {
-    return bot.sendMessage(chatId, "Main Menu:", mainMenu);
-  }
-
-  // 3. Register Button
-  if (text === 'Register') {
+  // 3. /register command
+  if (text === '/register' || text === 'Register') {
     return bot.sendMessage(chatId, "Please tap the button below to share your contact and complete registration:", {
       reply_markup: {
         keyboard: [
-          [{ text: "Share Contact", request_contact: true }],
-          [{ text: "Back to Menu" }]
+          [{ text: "Share Contact", request_contact: true }]
         ],
         resize_keyboard: true,
         one_time_keyboard: true
@@ -121,18 +115,19 @@ bot.on('message', async (msg) => {
     });
   }
 
-  // 4. Play Bingo Button
-  if (text === 'Play Bingo') {
+  // 4. /playbingo command
+  if (text === '/playbingo' || text === 'Play Bingo') {
     const snapshot = await db.ref(`users/${userId}`).once('value');
     const userData = snapshot.val();
 
     if (!userData || !userData.phone) {
-      return bot.sendMessage(chatId, "⚠️ You must register your account before playing! Please tap Register below:", {
+      return bot.sendMessage(chatId, "⚠️ You must register your account before playing! Tap below to share your contact:", {
         reply_markup: {
           keyboard: [
-            [{ text: "Register" }]
+            [{ text: "Share Contact", request_contact: true }]
           ],
-          resize_keyboard: true
+          resize_keyboard: true,
+          one_time_keyboard: true
         }
       });
     }
@@ -146,33 +141,40 @@ bot.on('message', async (msg) => {
     });
   }
 
-  if (text === 'Play Spin') {
+  // 5. /playspin command
+  if (text === '/playspin' || text === 'Play Spin') {
     return bot.sendMessage(chatId, "Spin game is coming soon!");
   }
 
-  if (text === 'Deposit') {
+  // 6. /deposit command
+  if (text === '/deposit' || text === 'Deposit') {
     return bot.sendMessage(chatId, "To deposit funds, please contact support or send your transaction receipt to the admin.");
   }
 
-  if (text === 'Withdraw') {
+  // 7. /withdraw command
+  if (text === '/withdraw' || text === 'Withdraw') {
     return bot.sendMessage(chatId, "To withdraw your winnings, ensure your balance is sufficient and contact support.");
   }
 
-  if (text === 'Check Balance') {
+  // 8. /balance command
+  if (text === '/balance' || text === 'Check Balance') {
     const snap = await db.ref(`users/${userId}/balance`).once('value');
     const balance = snap.exists() ? snap.val() : 0;
     return bot.sendMessage(chatId, `Your current balance is: ${Number(balance).toFixed(2)} ETB`);
   }
 
-  if (text === 'Contact Support') {
+  // 9. /support command
+  if (text === '/support' || text === 'Contact Support') {
     return bot.sendMessage(chatId, "For any issues or questions, please contact our support team.");
   }
 
-  if (text === 'Instruction') {
-    return bot.sendMessage(chatId, "How to Play:\n1. Register your contact.\n2. Tap Play Bingo to open the app.\n3. Choose your card and start playing!");
+  // 10. /instruction command
+  if (text === '/instruction' || text === 'Instruction') {
+    return bot.sendMessage(chatId, "How to Play:\n1. Register your contact via /register.\n2. Tap /playbingo to open the app.\n3. Choose your card and start playing!");
   }
 
-  if (text === 'Invite') {
+  // 11. /invite command
+  if (text === '/invite' || text === 'Invite') {
     return bot.sendMessage(chatId, "Invite your friends using your link: https://t.me/addis_bingo_bot");
   }
 });
