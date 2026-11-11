@@ -6,8 +6,8 @@ const admin = require('firebase-admin');
 const app = express();
 app.use(express.json());
 
-// Serve static frontend files from the "public" folder
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files directly from the root folder (where index.html is)
+app.use(express.static(__dirname));
 
 // Firebase Setup
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -23,7 +23,7 @@ const bot = new TelegramBot(token);
 
 // Serve the WebApp HTML on root route
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Telegram Webhook Endpoint
